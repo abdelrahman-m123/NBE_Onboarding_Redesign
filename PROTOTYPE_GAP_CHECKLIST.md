@@ -5,9 +5,9 @@ Use this as the living checklist for the redesign prototype. When a gap is compl
 ## Product And Journey
 
 - [x] Initialize backend project and create the required Postgres tables in `nbe_onboarding.public`.
-- [ ] Add real backend integration for NID, mobile OTP, email OTP, saving, submission, and tracking.
-- [ ] Implement real save-and-resume instead of the current prototype toast.
-- [ ] Add Arabic language support with equivalent RTL layout and content.
+- [x] Add real backend integration for NID, mobile OTP, email OTP, saving, submission, and tracking.
+- [x] Implement real save-and-resume instead of the current prototype toast.
+- [x] Add Arabic language support with equivalent RTL layout and content.
 - [ ] Add complete eligibility handling for minors, power of attorney, gift accounts, people who cannot read or write, non-residents, and customers under 21.
 - [ ] Add account type or product selection if required by NBE before account opening.
 - [ ] Add a clear preparation route for customers who should apply at a branch instead.
