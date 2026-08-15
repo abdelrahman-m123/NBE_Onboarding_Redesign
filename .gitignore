@@ -4,3 +4,5 @@ dist/
 *.local
 *.log
 *.traineddata
+package-lock.json
+package.json
