@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, useEffect } from 'react'
 import {
   ArrowLeft,
   ArrowRight,
@@ -119,13 +119,19 @@ const nextLabels = [
 function App() {
   const [step, setStep] = useState(0)
   const [form, setForm] = useState(initialForm)
+  const [applicationId, setApplicationId] = useState(null)
   const [errors, setErrors] = useState({})
   const [toast, setToast] = useState('')
   const [mobileVerified, setMobileVerified] = useState(false)
   const [emailVerified, setEmailVerified] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [emailOtpSent, setEmailOtpSent] = useState(false)
+  const [emailOtpValue, setEmailOtpValue] = useState('')
   const [ocrResult, setOcrResult] = useState(null)
+  const [mobileOtpSent, setMobileOtpSent] = useState(false)
+  const [mobileOtpCode, setMobileOtpCode] = useState('')
+  const [isMobileVerified, setIsMobileVerified] = useState(false)
   const headingRef = useRef(null)
 
   const progress = Math.round(((step + 1) / steps.length) * 100)
@@ -135,6 +141,48 @@ function App() {
     setForm((current) => ({ ...current, [name]: value }))
     setErrors((current) => ({ ...current, [name]: undefined }))
   }
+
+  useEffect(() => {
+    const savedAppId = localStorage.getItem('nbe_app_id')
+    if (!savedAppId) return
+
+    const loadSavedApplication = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/applications/${savedAppId}/profile`)
+        if (!response.ok) throw new Error('Could not load profile')
+        
+        const data = await response.json()
+        setApplicationId(savedAppId)
+        
+        // Reconstruct the full name
+        const fullName = [data.first_name, data.last_name].filter(Boolean).join(' ')
+        
+        // Find which step they were on
+        const savedStepIndex = steps.findIndex(s => s.short.toLowerCase() === data.current_step)
+        if (savedStepIndex !== -1) {
+          setStep(savedStepIndex)
+        }
+
+        // Populate the form with the saved database info
+        setForm(current => ({
+          ...current,
+          nationalId: data.national_id_hash || current.nationalId,
+          fullName: fullName || current.fullName,
+          dateOfBirth: data.date_of_birth ? data.date_of_birth.split('T')[0] : current.dateOfBirth,
+          governorate: data.governorate || current.governorate,
+          address: data.address_line || current.address,
+          mobile: data.mobile_hash || current.mobile,
+          email: data.email_hash || current.email,
+        }))
+        
+        showToast('Your previous progress has been restored.')
+      } catch (error) {
+        console.error('Failed to resume application:', error)
+      }
+    }
+
+    loadSavedApplication()
+  }, []) // Empty dependency array means this only runs once when the tab opens
 
   const applyOcrResult = (result) => {
     setOcrResult(result)
@@ -254,14 +302,149 @@ function App() {
     setMobileVerified(false)
     setEmailVerified(false)
     setSubmitted(false)
+    setApplicationId(null)
+    localStorage.removeItem('nbe_app_id')
     focusHeading()
   }
+
+  const handleSave = async () => {
+    try {
+      let currentAppId = applicationId
+
+      // 1. If we don't have an application ID yet, create one
+      if (!currentAppId) {
+        const createRes = await fetch(`${API_BASE_URL}/api/applications`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ currentStep: steps[step].short.toLowerCase() })
+        })
+        
+        if (!createRes.ok) throw new Error('Failed to create application session.')
+        const createData = await createRes.json()
+        currentAppId = createData.id
+        setApplicationId(currentAppId)
+        localStorage.setItem('nbe_app_id', currentAppId)
+      }
+
+      // 2. Save the current form data to the backend
+      const updateRes = await fetch(`${API_BASE_URL}/api/applications/${currentAppId}/profile`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nationalId: form.nationalId,
+          fullName: form.fullName,
+          dateOfBirth: form.dateOfBirth,
+          governorate: form.governorate,
+          address: form.address,
+          mobile: form.mobile,
+          email: form.email,
+          currentStep: steps[step].short.toLowerCase()
+        })
+      })
+
+      if (!updateRes.ok) throw new Error('Failed to save profile data.')
+
+      showToast('Application securely saved! You can resume later.')
+    } catch (error) {
+      console.error('Save error:', error)
+      showToast('Error saving application. Please check your connection.')
+    }
+  }
+
+  const handleSendEmailOtp = async () => {
+    if (!form.email) {
+      showToast('Please enter an email address first.')
+      return
+    }
+
+    try {
+      // If we don't have an applicationId yet, trigger a save to create one
+      let currentAppId = applicationId
+      if (!currentAppId) {
+        await handleSave()
+        // Pull it from localStorage after the save
+        currentAppId = localStorage.getItem('nbe_app_id') 
+      }
+      if (!currentAppId || currentAppId === 'null' || currentAppId === 'undefined') {
+        showToast('Please complete or save your application step first.')
+        return
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/applications/${currentAppId}/send-email-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: form.email })
+      })
+
+      if (!response.ok) throw new Error('Failed to send email.')
+
+      setEmailOtpSent(true)
+      showToast('Verification code sent to your email!')
+    } catch (error) {
+      console.error(error)
+      showToast('Error sending verification code.')
+    }
+  }
+  const handleSendMobileOtp = async () => {
+  if (!form.mobile || !/^01[0125][0-9]{8}$/.test(form.mobile)) {
+    showToast('Please enter a valid 11-digit Egyptian mobile number.')
+    return
+  }
+
+  try {
+    let currentAppId = applicationId
+    if (!currentAppId) {
+      await handleSave()
+      currentAppId = localStorage.getItem('nbe_app_id')
+    }
+
+    const res = await fetch(`${API_BASE_URL}/api/applications/${currentAppId}/send-mobile-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mobile: form.mobile })
+    })
+
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message || 'Failed to dispatch SMS')
+
+    setMobileOtpSent(true)
+    showToast('Verification code sent to your mobile number!')
+  } catch (error) {
+    showToast(error.message)
+  }
+}
+
+// 3. Verify OTP
+const handleVerifyMobileOtp = async () => {
+  if (mobileOtpCode.length !== 6) {
+    showToast('Please enter the full 6-digit code.')
+    return
+  }
+
+  try {
+    const currentAppId = applicationId || localStorage.getItem('nbe_app_id')
+
+    const res = await fetch(`${API_BASE_URL}/api/applications/${currentAppId}/verify-mobile-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: mobileOtpCode })
+    })
+
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message || 'Verification failed')
+
+    setIsMobileVerified(true)
+    showToast('Mobile number verified successfully!')
+  } catch (error) {
+    showToast(error.message)
+  }
+}
 
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">Skip to application</a>
       <Header
-        onSave={() => showToast('Your progress is saved for this prototype session.')}
+        onSave={() => handleSave()}
         mobileNavOpen={mobileNavOpen}
         setMobileNavOpen={setMobileNavOpen}
       />
@@ -276,16 +459,6 @@ function App() {
         <section className="content-panel" aria-labelledby="page-title">
           <div className="step-kicker">Step {step + 1} of {steps.length}</div>
           <h1 id="page-title" tabIndex="-1" ref={headingRef}>{steps[step].title}</h1>
-
-          {/* {Object.keys(errors).length > 0 && (
-            <div className="error-summary" role="alert">
-              <Info size={20} aria-hidden="true" />
-              <div>
-                <strong>Check the highlighted information</strong>
-                <p>There are {Object.keys(errors).length} items to complete before continuing.</p>
-              </div>
-            </div>
-          )} */}
 
           {step === 0 && (
             <PrepareStep form={form} errors={errors} onToggle={updateEligibility} />
@@ -308,9 +481,13 @@ function App() {
               emailVerified={emailVerified}
               verifyMobile={verifyMobile}
               verifyEmail={verifyEmail}
-              resetMobile={() => setMobileVerified(false)}
-              resetEmail={() => setEmailVerified(false)}
+              resetMobile={() => { setIsMobileVerified(false); setMobileOtpSent(false); }}
+              resetEmail={() => { setIsEmailVerified(false); setEmailOtpSent(false); }}
               showToast={showToast}
+              mobileOtpSent={mobileOtpSent}
+              onSendMobileOtp={handleSendMobileOtp}
+              emailOtpSent={emailOtpSent}
+              onSendEmailOtp={handleSendEmailOtp}
             />
           )}
           {step === 3 && (
@@ -339,7 +516,6 @@ function App() {
             </div>
           )}
         </section>
-
       </main>
 
       <Footer />
@@ -588,48 +764,88 @@ function IdentityStep({ form, errors, update, ocrResult, onOcrResult }) {
           <Upload size={18} /> {ocrStatus === 'scanning' ? 'Scanning...' : 'Scan ID'}
         </button>
       </div>
-
-      {/* {(ocrResult || ocrError || ocrStatus === 'scanning') && (
-        <div className={`ocr-review ${ocrStatus === 'failed' || ocrStatus === 'needs-review' ? 'has-warning' : ''}`} role="status">
-          <div className="ocr-review-heading">
-            {ocrStatus === 'complete' ? <CheckCircle2 size={20} /> : <Info size={20} />}
-            <div>
-              <strong>{ocrStatus === 'scanning' ? 'Reading the ID image' : ocrStatus === 'complete' ? 'Review extracted details' : 'Scan needs attention'}</strong>
-              <p>{ocrStatus === 'scanning' ? 'This can take a few seconds. The image is processed by the local backend for this prototype.' : ocrError || 'We filled the extracted fields above. Review and correct them before continuing.'}</p>
-            </div>
-          </div>
-        </div>
-      )} */}
-
     </div>
   )
 }
 
-function ContactStep({ form, errors, update, mobileVerified, emailVerified, verifyMobile, verifyEmail, resetMobile, resetEmail, showToast }) {
+function ContactStep({ 
+  form, 
+  errors, 
+  update, 
+  mobileVerified, 
+  emailVerified, 
+  verifyMobile, 
+  verifyEmail, 
+  resetMobile, 
+  resetEmail, 
+  showToast,
+  mobileOtpSent,
+  onSendMobileOtp,
+  emailOtpSent,        
+  onSendEmailOtp       
+}) {
   const maskedMobile = form.mobile ? `${form.mobile.slice(0, 3)} •••• ${form.mobile.slice(-4)}` : '01• •••• ••••'
 
   return (
     <div className="step-body">
       <p className="lead">Verify the contact details NBE will use for application updates. Never share this code. NBE employees will not ask you for it.</p>
 
+      {/* --- MOBILE VERIFICATION CARD --- */}
       <VerificationCard
         icon={<Smartphone size={22} />}
         title="Mobile number"
-        destination={maskedMobile}
+        destination={mobileVerified ? maskedMobile : form.mobile || 'Add your Egyptian mobile number'}
         verified={mobileVerified}
         onEdit={resetMobile}
       >
-        <OtpInput
-          name="smsOtp"
-          value={form.smsOtp}
-          onChange={(value) => update('smsOtp', value)}
-          error={errors.smsOtp}
-          onVerify={verifyMobile}
-          verifyLabel="Verify mobile number"
-        />
-        <div className="resend-row"><span>Code expires in <strong>04:32</strong></span><button type="button" onClick={() => showToast('A new mobile code has been sent.')}>Resend code</button></div>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', width: '100%' }}>
+          <div style={{ flexGrow: 1 }}>
+            <Field
+              label="Mobile number"
+              name="mobile"
+              value={form.mobile}
+              onChange={(value) => { update('mobile', value); resetMobile() }}
+              error={errors.mobile}
+              autoComplete="tel"
+              inputMode="tel"
+              placeholder="01012345678"
+              disabled={mobileVerified}
+            />
+          </div>
+          
+          {/* Send SMS Code Button */}
+          {!mobileVerified && !mobileOtpSent && (
+            <button
+              type="button"
+              onClick={onSendMobileOtp}
+              className="button button-primary"
+              style={{ marginBottom: '1rem', height: '46px', whiteSpace: 'nowrap' }}
+            >
+              Verify Mobile
+            </button>
+          )}
+        </div>
+
+        {/* The Mobile OTP Input (Revealed after code is sent) */}
+        {mobileOtpSent && !mobileVerified && (
+          <div style={{ marginTop: '1rem' }}>
+            <OtpInput
+              name="smsOtp"
+              value={form.smsOtp}
+              onChange={(value) => update('smsOtp', value)}
+              error={errors.smsOtp}
+              onVerify={verifyMobile}
+              verifyLabel="Confirm mobile code"
+            />
+            <div className="resend-row">
+              <span>Code expires in <strong>05:00</strong></span>
+              <button type="button" onClick={onSendMobileOtp}>Resend SMS</button>
+            </div>
+          </div>
+        )}
       </VerificationCard>
 
+      {/* --- EMAIL VERIFICATION CARD --- */}
       <VerificationCard
         icon={<Mail size={22} />}
         title="Email address"
@@ -637,28 +853,57 @@ function ContactStep({ form, errors, update, mobileVerified, emailVerified, veri
         verified={emailVerified}
         onEdit={resetEmail}
       >
-        <Field
-          label="Email address"
-          name="email"
-          value={form.email}
-          onChange={(value) => { update('email', value); resetEmail() }}
-          error={errors.email}
-          autoComplete="email"
-          inputMode="email"
-          placeholder="name@example.com"
-        />
-        <OtpInput
-          name="emailOtp"
-          value={form.emailOtp}
-          onChange={(value) => update('emailOtp', value)}
-          error={errors.emailOtp}
-          onVerify={verifyEmail}
-          verifyLabel="Verify email address"
-        />
-        <div className="resend-row"><span>Can’t find it? Check junk or spam.</span><button type="button" onClick={() => showToast('A new email code has been sent.')}>Resend email</button></div>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', width: '100%' }}>
+          <div style={{ flexGrow: 1 }}>
+            <Field
+              label="Email address"
+              name="email"
+              value={form.email}
+              onChange={(value) => { update('email', value); resetEmail() }}
+              error={errors.email}
+              autoComplete="email"
+              inputMode="email"
+              placeholder="name@example.com"
+              disabled={emailVerified}
+            />
+          </div>
+          
+          {/* Send Email Code Button */}
+          {!emailVerified && !emailOtpSent && (
+            <button
+              type="button"
+              onClick={onSendEmailOtp}
+              className="button button-primary"
+              style={{ marginBottom: '1rem', height: '46px', whiteSpace: 'nowrap' }}
+            >
+              Verify Email
+            </button>
+          )}
+        </div>
+
+        {/* The Email OTP Input (Revealed after code is sent) */}
+        {emailOtpSent && !emailVerified && (
+          <div style={{ marginTop: '1rem' }}>
+            <OtpInput
+              name="emailOtp"
+              value={form.emailOtp}
+              onChange={(value) => update('emailOtp', value)}
+              error={errors.emailOtp}
+              onVerify={verifyEmail}
+              verifyLabel="Confirm email code"
+            />
+            <div className="resend-row">
+              <span>Code expires in <strong>05:00</strong></span>
+              <button type="button" onClick={onSendEmailOtp}>Resend email</button>
+            </div>
+          </div>
+        )}
       </VerificationCard>
 
-      <div className="security-banner"><ShieldCheck size={21} /><span><strong>Keep every code private.</strong> NBE employees will never ask you to read or send them a verification code.</span></div>
+      <div className="security-banner">
+        <ShieldCheck size={21} />
+        <span><strong>Keep every code private.</strong> NBE employees will never ask you to read or send them a verification code.</span>
+      </div>
     </div>
   )
 }
