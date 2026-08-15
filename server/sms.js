@@ -156,4 +156,5 @@ export function verifyMobileOtp(applicationId, inputCode) {
   otpStore.delete(key)
   otpStore.delete('latest')
   return { success: true, mobile: entry.mobile }
+  
 }
