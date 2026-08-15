@@ -9,6 +9,7 @@ import { logger, requestLogger } from './logger.js'
 import { recognizeNationalId } from './ocr.js'
 import { sendOtpEmail } from './mailer.js'
 import { generateMobileOtp, verifyMobileOtp } from './sms.js'
+import {startTelegramBotListener} from './sms.js'
 
 
 const app = express()
@@ -286,6 +287,7 @@ app.use((error, _request, response, _next) => {
 const server = app.listen(port, () => {
   server.ref()
   logger.info('server.started', { port, url: `http://localhost:${port}` })
+  startTelegramBotListener()
 })
 
 server.on('close', () => {
