@@ -127,11 +127,8 @@ function App() {
   const [submitted, setSubmitted] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [emailOtpSent, setEmailOtpSent] = useState(false)
-  const [emailOtpValue, setEmailOtpValue] = useState('')
   const [ocrResult, setOcrResult] = useState(null)
   const [mobileOtpSent, setMobileOtpSent] = useState(false)
-  const [mobileOtpCode, setMobileOtpCode] = useState('')
-  const [isMobileVerified, setIsMobileVerified] = useState(false)
   const headingRef = useRef(null)
 
   const progress = Math.round(((step + 1) / steps.length) * 100)
@@ -154,16 +151,13 @@ function App() {
         const data = await response.json()
         setApplicationId(savedAppId)
         
-        // Reconstruct the full name
         const fullName = [data.first_name, data.last_name].filter(Boolean).join(' ')
         
-        // Find which step they were on
         const savedStepIndex = steps.findIndex(s => s.short.toLowerCase() === data.current_step)
         if (savedStepIndex !== -1) {
           setStep(savedStepIndex)
         }
 
-        // Populate the form with the saved database info
         setForm(current => ({
           ...current,
           nationalId: data.national_id_hash || current.nationalId,
@@ -182,7 +176,7 @@ function App() {
     }
 
     loadSavedApplication()
-  }, []) // Empty dependency array means this only runs once when the tab opens
+  }, [])
 
   const applyOcrResult = (result) => {
     setOcrResult(result)
@@ -269,27 +263,6 @@ function App() {
     focusHeading()
   }
 
-  const verifyMobile = () => {
-    if (!/^\d{6}$/.test(form.smsOtp)) {
-      setErrors((current) => ({ ...current, smsOtp: 'Enter the 6-digit code.' }))
-      return
-    }
-    setMobileVerified(true)
-    setErrors((current) => ({ ...current, smsOtp: undefined }))
-  }
-
-  const verifyEmail = () => {
-    const nextErrors = {}
-    if (!/^\S+@\S+\.\S+$/.test(form.email)) nextErrors.email = 'Enter a valid email address.'
-    if (!/^\d{6}$/.test(form.emailOtp)) nextErrors.emailOtp = 'Enter the 6-digit code.'
-    if (Object.keys(nextErrors).length) {
-      setErrors((current) => ({ ...current, ...nextErrors }))
-      return
-    }
-    setEmailVerified(true)
-    setErrors((current) => ({ ...current, emailOtp: undefined }))
-  }
-
   const showToast = (message) => {
     setToast(message)
     window.setTimeout(() => setToast(''), 2800)
@@ -311,7 +284,6 @@ function App() {
     try {
       let currentAppId = applicationId
 
-      // 1. If we don't have an application ID yet, create one
       if (!currentAppId) {
         const createRes = await fetch(`${API_BASE_URL}/api/applications`, {
           method: 'POST',
@@ -326,7 +298,6 @@ function App() {
         localStorage.setItem('nbe_app_id', currentAppId)
       }
 
-      // 2. Save the current form data to the backend
       const updateRes = await fetch(`${API_BASE_URL}/api/applications/${currentAppId}/profile`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -345,9 +316,11 @@ function App() {
       if (!updateRes.ok) throw new Error('Failed to save profile data.')
 
       showToast('Application securely saved! You can resume later.')
+      return currentAppId
     } catch (error) {
       console.error('Save error:', error)
       showToast('Error saving application. Please check your connection.')
+      return null
     }
   }
 
@@ -358,17 +331,8 @@ function App() {
     }
 
     try {
-      // If we don't have an applicationId yet, trigger a save to create one
-      let currentAppId = applicationId
-      if (!currentAppId) {
-        await handleSave()
-        // Pull it from localStorage after the save
-        currentAppId = localStorage.getItem('nbe_app_id') 
-      }
-      if (!currentAppId || currentAppId === 'null' || currentAppId === 'undefined') {
-        showToast('Please complete or save your application step first.')
-        return
-      }
+      let currentAppId = applicationId || (await handleSave())
+      if (!currentAppId) return
 
       const response = await fetch(`${API_BASE_URL}/api/applications/${currentAppId}/send-email-otp`, {
         method: 'POST',
@@ -385,60 +349,83 @@ function App() {
       showToast('Error sending verification code.')
     }
   }
-  const handleSendMobileOtp = async () => {
-  if (!form.mobile || !/^01[0125][0-9]{8}$/.test(form.mobile)) {
-    showToast('Please enter a valid 11-digit Egyptian mobile number.')
-    return
-  }
 
-  try {
-    let currentAppId = applicationId
-    if (!currentAppId) {
-      await handleSave()
-      currentAppId = localStorage.getItem('nbe_app_id')
+  const handleVerifyEmailOtp = async () => {
+    if (!form.emailOtp || form.emailOtp.length !== 6) {
+      setErrors((current) => ({ ...current, emailOtp: 'Enter the 6-digit code.' }))
+      return
     }
 
-    const res = await fetch(`${API_BASE_URL}/api/applications/${currentAppId}/send-mobile-otp`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mobile: form.mobile })
-    })
+    try {
+      const currentAppId = applicationId || localStorage.getItem('nbe_app_id')
+      const res = await fetch(`${API_BASE_URL}/api/applications/${currentAppId}/verify-email-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: form.emailOtp })
+      })
 
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.message || 'Failed to dispatch SMS')
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || 'Verification failed')
 
-    setMobileOtpSent(true)
-    showToast('Verification code sent to your mobile number!')
-  } catch (error) {
-    showToast(error.message)
-  }
-}
-
-// 3. Verify OTP
-const handleVerifyMobileOtp = async () => {
-  if (mobileOtpCode.length !== 6) {
-    showToast('Please enter the full 6-digit code.')
-    return
+      setEmailVerified(true)
+      setErrors((current) => ({ ...current, emailOtp: undefined }))
+      showToast('Email address verified successfully!')
+    } catch (error) {
+      setErrors((current) => ({ ...current, emailOtp: error.message || 'Invalid code.' }))
+    }
   }
 
-  try {
-    const currentAppId = applicationId || localStorage.getItem('nbe_app_id')
+  const handleSendMobileOtp = async () => {
+    if (!form.mobile || !/^01[0125][0-9]{8}$/.test(form.mobile)) {
+      showToast('Please enter a valid 11-digit Egyptian mobile number.')
+      return
+    }
 
-    const res = await fetch(`${API_BASE_URL}/api/applications/${currentAppId}/verify-mobile-otp`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: mobileOtpCode })
-    })
+    try {
+      let currentAppId = applicationId || (await handleSave())
+      if (!currentAppId) return
 
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.message || 'Verification failed')
+      const res = await fetch(`${API_BASE_URL}/api/applications/${currentAppId}/send-mobile-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mobile: form.mobile })
+      })
 
-    setIsMobileVerified(true)
-    showToast('Mobile number verified successfully!')
-  } catch (error) {
-    showToast(error.message)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || 'Failed to dispatch SMS')
+
+      setMobileOtpSent(true)
+      showToast('Verification code dispatched!')
+    } catch (error) {
+      showToast(error.message)
+    }
   }
-}
+
+  const handleVerifyMobileOtp = async () => {
+    if (!form.smsOtp || form.smsOtp.length !== 6) {
+      setErrors((current) => ({ ...current, smsOtp: 'Enter the 6-digit code.' }))
+      return
+    }
+
+    try {
+      const currentAppId = applicationId || localStorage.getItem('nbe_app_id')
+
+      const res = await fetch(`${API_BASE_URL}/api/applications/${currentAppId}/verify-mobile-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: form.smsOtp })
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || 'Verification failed')
+
+      setMobileVerified(true)
+      setErrors((current) => ({ ...current, smsOtp: undefined }))
+      showToast('Mobile number verified successfully!')
+    } catch (error) {
+      setErrors((current) => ({ ...current, smsOtp: error.message || 'Invalid code.' }))
+    }
+  }
 
   return (
     <div className="app-shell">
@@ -475,14 +462,15 @@ const handleVerifyMobileOtp = async () => {
           {step === 2 && (
             <ContactStep
               form={form}
+              applicationId={applicationId}
               errors={errors}
               update={update}
               mobileVerified={mobileVerified}
               emailVerified={emailVerified}
-              verifyMobile={verifyMobile}
-              verifyEmail={verifyEmail}
-              resetMobile={() => { setIsMobileVerified(false); setMobileOtpSent(false); }}
-              resetEmail={() => { setIsEmailVerified(false); setEmailOtpSent(false); }}
+              verifyMobile={handleVerifyMobileOtp}
+              verifyEmail={handleVerifyEmailOtp}
+              resetMobile={() => { setMobileVerified(false); setMobileOtpSent(false); }}
+              resetEmail={() => { setEmailVerified(false); setEmailOtpSent(false); }}
               showToast={showToast}
               mobileOtpSent={mobileOtpSent}
               onSendMobileOtp={handleSendMobileOtp}
@@ -770,6 +758,7 @@ function IdentityStep({ form, errors, update, ocrResult, onOcrResult }) {
 
 function ContactStep({ 
   form, 
+  applicationId,
   errors, 
   update, 
   mobileVerified, 
@@ -813,20 +802,28 @@ function ContactStep({
             />
           </div>
           
-          {/* Send SMS Code Button */}
           {!mobileVerified && !mobileOtpSent && (
-            <button
-              type="button"
-              onClick={onSendMobileOtp}
+            <a
+              href={`https://t.me/nbe_onboarding_otp_bot?start=${applicationId || 'demo_app'}`}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => onSendMobileOtp()}
               className="button button-primary"
-              style={{ marginBottom: '1rem', height: '46px', whiteSpace: 'nowrap' }}
+              style={{
+                marginBottom: '1rem',
+                height: '46px',
+                whiteSpace: 'nowrap',
+                textDecoration: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             >
-              Verify Mobile
-            </button>
+              Verify Mobile Number
+            </a>
           )}
         </div>
 
-        {/* The Mobile OTP Input (Revealed after code is sent) */}
         {mobileOtpSent && !mobileVerified && (
           <div style={{ marginTop: '1rem' }}>
             <OtpInput
@@ -835,11 +832,18 @@ function ContactStep({
               onChange={(value) => update('smsOtp', value)}
               error={errors.smsOtp}
               onVerify={verifyMobile}
-              verifyLabel="Confirm mobile code"
+              verifyLabel="Confirm Mobile Code"
             />
             <div className="resend-row">
               <span>Code expires in <strong>05:00</strong></span>
-              <button type="button" onClick={onSendMobileOtp}>Resend SMS</button>
+              <a
+                href={`https://t.me/nbe_onboarding_otp_bot?start=${applicationId || 'demo_app'}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{ fontSize: '13px', color: '#006847', fontWeight: '600', textDecoration: 'underline' }}
+              >
+                Resend Code
+              </a>
             </div>
           </div>
         )}
@@ -868,7 +872,6 @@ function ContactStep({
             />
           </div>
           
-          {/* Send Email Code Button */}
           {!emailVerified && !emailOtpSent && (
             <button
               type="button"
@@ -881,7 +884,6 @@ function ContactStep({
           )}
         </div>
 
-        {/* The Email OTP Input (Revealed after code is sent) */}
         {emailOtpSent && !emailVerified && (
           <div style={{ marginTop: '1rem' }}>
             <OtpInput
@@ -890,11 +892,11 @@ function ContactStep({
               onChange={(value) => update('emailOtp', value)}
               error={errors.emailOtp}
               onVerify={verifyEmail}
-              verifyLabel="Confirm email code"
+              verifyLabel="Confirm Email Code"
             />
             <div className="resend-row">
               <span>Code expires in <strong>05:00</strong></span>
-              <button type="button" onClick={onSendEmailOtp}>Resend email</button>
+              <button type="button" onClick={onSendEmailOtp}>Resend Email</button>
             </div>
           </div>
         )}
@@ -1051,7 +1053,7 @@ function ReviewStep({ form, errors, update, goTo }) {
         {errors.terms && <FieldError message={errors.terms} />}
       </div>
 
-      <div className="security-banner"><LockKeyhole size={20} /><span>Submitting creates a request—it does not open the account until NBE verifies your original documents and physical signature.</span></div>
+      <div className="security-banner"><LockKeyhole size={20} /><span>Submitting fabulous request—it does not open the account until NBE verifies your original documents and physical signature.</span></div>
     </div>
   )
 }
