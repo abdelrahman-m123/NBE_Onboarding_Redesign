@@ -167,15 +167,15 @@ const translations = {
       email: 'Email address',
       destinationMobile: 'Add your Egyptian mobile number',
       destinationEmail: 'Add the email you check regularly',
-      verifyTelegram: 'Verify on Telegram',
-      reopenTelegram: 'Reopen Telegram Bot',
+      verifyMobileNumber: 'Verify Mobile Number',
+      resendCode: 'Resend code',
+      verifyMobileOtpLabel: 'Verify Mobile OTP',
+      verifyEmailOtpLabel: 'Verify Email OTP',
+      verifyButton: 'Verify',
       verifyEmail: 'Verify Email',
       resendEmail: 'Resend email',
       expiresIn: 'Code expires in',
       security: 'Keep every code private. NBE employees will never ask you to read or send them a verification code.',
-      codeLabel: '6-digit verification code',
-      confirmMobile: 'Confirm mobile code',
-      confirmEmail: 'Confirm email code',
     },
     application: {
       lead: 'Tell us about your employment so we can prepare the right proof checklist for your branch or employee visit.',
@@ -341,15 +341,15 @@ const translations = {
       email: 'البريد الإلكتروني',
       destinationMobile: 'أضف رقم هاتفك المصري',
       destinationEmail: 'أضف البريد الإلكتروني الذي تراجعُه بانتظام',
-      verifyTelegram: 'التحقق عبر تيليجرام',
-      reopenTelegram: 'إعادة فتح بوت تيليجرام',
+      verifyMobileNumber: 'التحقق من رقم الهاتف',
+      resendCode: 'إعادة إرسال الرمز',
+      verifyMobileOtpLabel: 'رمز التحقق من الهاتف',
+      verifyEmailOtpLabel: 'رمز التحقق من البريد',
+      verifyButton: 'تأكيد',
       verifyEmail: 'تحقق من البريد',
       resendEmail: 'إعادة إرسال البريد',
       expiresIn: 'تنتهي صلاحية الرمز خلال',
       security: 'احفظ كل رمز في سرية كاملة. لن يطلب منك موظفو البنك أبدًا قراءة أو إرسال رموز التحقق.',
-      codeLabel: 'رمز التحقق المكوّن من 6 أرقام',
-      confirmMobile: 'تأكيد رمز الهاتف',
-      confirmEmail: 'تأكيد رمز البريد',
     },
     application: {
       lead: 'أخبرنا عن وظيفتك حتى نعد قائمة الدليل المناسبة لزيارتك إلى الفرع أو الموظف.',
@@ -1164,7 +1164,7 @@ function ContactStep({
                 justifyContent: 'center',
               }}
             >
-              {t.contact.verifyTelegram}
+              {t.contact.verifyMobileNumber}
             </a>
           )}
         </div>
@@ -1173,11 +1173,12 @@ function ContactStep({
           <div style={{ marginTop: '1rem' }}>
             <OtpInput
               name="smsOtp"
+              label={t.contact.verifyMobileOtpLabel || 'Verify Mobile OTP'}
               value={form.smsOtp}
               onChange={(value) => update('smsOtp', value)}
               error={errors.smsOtp}
               onVerify={verifyMobile}
-              verifyLabel={t.contact.confirmMobile}
+              verifyLabel={t.contact.verifyButton || 'Verify'}
             />
             <div className="resend-row">
               <span>{t.contact.expiresIn} <strong>05:00</strong></span>
@@ -1187,7 +1188,7 @@ function ContactStep({
                 rel="noreferrer"
                 style={{ fontSize: '13px', color: '#006847', fontWeight: '600', textDecoration: 'underline' }}
               >
-                {t.contact.reopenTelegram}
+                {t.contact.resendCode}
               </a>
             </div>
           </div>
@@ -1234,11 +1235,12 @@ function ContactStep({
           <div style={{ marginTop: '1rem' }}>
             <OtpInput
               name="emailOtp"
+              label={t.contact.verifyEmailOtpLabel || 'Verify Email OTP'}
               value={form.emailOtp}
               onChange={(value) => update('emailOtp', value)}
               error={errors.emailOtp}
               onVerify={verifyEmail}
-              verifyLabel={t.contact.confirmEmail}
+              verifyLabel={t.contact.verifyButton || 'Verify'}
             />
             <div className="resend-row">
               <span>{t.contact.expiresIn} <strong>05:00</strong></span>
@@ -1271,11 +1273,11 @@ function VerificationCard({ icon, title, destination, verified, onEdit, children
   )
 }
 
-function OtpInput({ name, value, onChange, error, onVerify, verifyLabel }) {
+function OtpInput({ name, label, value, onChange, error, onVerify, verifyLabel }) {
   return (
     <div className="otp-group">
       <div className="field grow">
-        <label htmlFor={name}>{verifyLabel}</label>
+        <label htmlFor={name}>{label || verifyLabel}</label>
         <input
           id={name}
           className={error ? 'input-error otp-input' : 'otp-input'}
@@ -1289,7 +1291,9 @@ function OtpInput({ name, value, onChange, error, onVerify, verifyLabel }) {
         />
         {error && <FieldError id={`${name}-error`} message={error} />}
       </div>
-      <button className="button button-secondary verify-button" type="button" onClick={onVerify}>{verifyLabel}</button>
+      <button className="button button-secondary verify-button" type="button" onClick={onVerify}>
+        {verifyLabel}
+      </button>
     </div>
   )
 }
