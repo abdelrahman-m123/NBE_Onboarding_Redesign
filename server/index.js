@@ -325,4 +325,5 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (error) => {
   logger.error('process.unhandled_rejection', { error })
   process.exit(1)
+  
 })
