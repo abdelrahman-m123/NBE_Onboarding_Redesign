@@ -94,27 +94,356 @@ const initialForm = {
   terms: false,
 }
 
-const fieldLabels = {
-  nationalId: 'National ID',
-  dateOfBirth: 'Date of birth',
-  fullName: 'Name as shown on ID',
-  mobile: 'Mobile number',
-  smsOtp: 'Mobile verification code',
-  email: 'Email address',
-  emailOtp: 'Email verification code',
-  governorate: 'Governorate',
-  address: 'Residential address',
-  employment: 'Employment status',
-  income: 'Monthly income range',
+const translations = {
+  en: {
+    help: 'Help',
+    saveExit: 'Save & exit',
+    back: 'Back',
+    languageLabel: 'Language',
+    skipToApplication: 'Skip to application',
+    step: 'Step',
+    of: 'of',
+    accountOpening: 'Account opening',
+    nextStep: 'Your next step',
+    applicationReference: 'Application reference',
+    copy: 'Copy',
+    verified: 'Verified',
+    change: 'Change',
+    selectOption: 'Select an option',
+    dateFormatHint: 'Use YYYY-MM-DD',
+    nameHint: 'Correct OCR spelling mistakes here',
+    addressHint: 'You can update your current residential address later if different',
+    mobileHint: 'We will send a verification code to this number',
+    appStatus: 'Application status',
+    steps: [
+      { short: 'Prepare', title: 'Get ready' },
+      { short: 'Identity', title: 'Verify your identity' },
+      { short: 'Contact', title: 'Verify contact details' },
+      { short: 'Employment', title: 'Employment proof' },
+      { short: 'Review', title: 'Review and complete' },
+      { short: 'Track', title: 'Request submitted' },
+    ],
+    fieldLabels: {
+      nationalId: 'National ID',
+      dateOfBirth: 'Date of birth',
+      fullName: 'Name as shown on ID',
+      mobile: 'Mobile number',
+      smsOtp: 'Mobile verification code',
+      email: 'Email address',
+      emailOtp: 'Email verification code',
+      governorate: 'Governorate',
+      address: 'Residential address',
+      employment: 'Employment status',
+      income: 'Monthly income range',
+    },
+    nextLabels: [
+      'Check eligibility and begin',
+      'Continue to contact verification',
+      'Continue to employment proof',
+      'Continue to review',
+      'Submit request',
+    ],
+    prepare: {
+      lead: 'A few quick checks will make sure this service is right for you. It usually takes 10-15 minutes to complete the online request.',
+      legend: 'Confirm that each statement applies to you',
+      requirements: [
+        'I am a new NBE retail customer',
+        'I currently reside in Egypt',
+        'I am 21 years old or older',
+        'I have a valid National ID number',
+      ],
+      laterTitle: 'What you may need later',
+      docs: [
+        { title: 'National ID', hint: 'Original and a clear copy' },
+        { title: 'Proof of address', hint: 'Only if your address differs' },
+        { title: 'Income or employment proof', hint: 'Based on your application answers' },
+      ],
+      branchLink: 'Who should apply at a branch instead?',
+    },
+    identity: {
+      lead: 'We use these details to locate and protect your application. Enter the National ID number—not the passport number.',
+      scanRecommended: 'Recommended',
+      scanTitle: 'Scan your National ID',
+      scanDescription: 'Upload a clear photo to extract the 14-digit ID number. You can review and edit it before continuing.',
+      scanButton: 'Scan ID',
+      scanning: 'Scanning...',
+      scanError: 'We could not confidently find a 14-digit National ID. Try a clearer image or enter it manually.',
+      scanHint: '14 digits, shown on your National ID',
+    },
+    contact: {
+      lead: 'Verify the contact details NBE will use for application updates. Never share this code. NBE employees will not ask you for it.',
+      mobile: 'Mobile number',
+      email: 'Email address',
+      destinationMobile: 'Add your Egyptian mobile number',
+      destinationEmail: 'Add the email you check regularly',
+      verifyMobile: 'Verify Mobile',
+      verifyEmail: 'Verify Email',
+      resendSms: 'Resend SMS',
+      resendEmail: 'Resend email',
+      expiresIn: 'Code expires in',
+      security: 'Keep every code private. NBE employees will never ask you to read or send them a verification code.',
+      codeLabel: '6-digit verification code',
+      confirmMobile: 'Confirm mobile code',
+      confirmEmail: 'Confirm email code',
+    },
+    application: {
+      lead: 'Tell us about your employment so we can prepare the right proof checklist for your branch or employee visit.',
+      sectionTitle: 'Employment proof',
+      sectionDescription: 'This helps determine which supporting documents apply',
+      optional: 'Optional',
+      uploadTitle: 'Upload HR letter proving income',
+      uploadDescription: 'Add an HR letter that confirms your role and income if you already have it ready.',
+      replace: 'Replace HR letter',
+      upload: 'Upload HR letter',
+      remove: 'Remove',
+      checklist: 'Your employment proof checklist',
+      employed: 'Upload or bring an HR letter that proves your income if your profession or income needs confirmation.',
+      selfEmployed: 'You may need a professional licence or tax card.',
+      other: 'We will confirm whether additional income evidence applies to you.',
+    },
+    review: {
+      lead: 'Review your details, then choose how you will provide the original documents and physical signature.',
+      identity: 'Identity',
+      contact: 'Contact',
+      identityDetails: 'Identity details',
+      employment: 'Employment',
+      methodTitle: 'How would you like to complete your request?',
+      methodCopy: 'Your online information will be ready when you arrive.',
+      viewDetails: 'View details',
+      legalText: 'I have read and agree to the account-opening terms and conditions and confirm that my information is accurate.',
+      securityNote: 'Submitting creates a request—it does not open the account until NBE verifies your original documents and physical signature.',
+      edit: 'Edit',
+      methods: {
+        ebranch: 'Book an e-branch visit',
+        branch: 'Visit a traditional branch',
+        employee: 'Request an employee visit',
+      },
+      methodText: {
+        ebranch: 'Choose a branch, date and time. We will show card-issuance availability.',
+        branch: 'Visit within 10 working days and ask for the Retail Banking Manager.',
+        employee: 'Available to eligible customers in select governorates. We will call within two working days.',
+      },
+      tags: {
+        mostConvenient: 'Most convenient',
+        eligibilityApplies: 'Eligibility applies',
+      },
+    },
+    success: {
+      lead: 'Thank you, {name}.',
+      requestReady: 'your request is ready',
+      confirmation: 'We have received your account-opening request and sent a confirmation to',
+      nextStep: 'Your next step',
+      method: {
+        ebranch: 'Book an e-branch visit',
+        branch: 'Visit a traditional branch',
+        employee: 'Request an employee visit',
+      },
+      methodText: {
+        ebranch: 'Choose your preferred branch, date and time to complete the request.',
+        branch: 'Visit your chosen NBE branch within 10 working days with the original documents.',
+        employee: 'An NBE employee will call your verified mobile number within two working days.',
+      },
+      action: {
+        ebranch: 'Choose appointment',
+        branch: 'Find a branch',
+        employee: 'View preparation checklist',
+      },
+      statusTitle: 'Submitted for completion',
+      statusPill: 'On track',
+      timeline: {
+        submitted: 'Online request submitted',
+        today: 'Today',
+        signature: 'Original documents and signature',
+        nextAction: 'Your next action',
+        review: 'NBE review',
+        update: 'We will keep you updated',
+        accountReady: 'Account ready',
+        final: 'Final confirmation by NBE',
+      },
+      downloadSummary: 'Download summary',
+      restart: 'Start another request',
+    },
+    footer: {
+      legal: 'Privacy',
+      security: 'Security',
+      accessibility: 'Accessibility',
+    },
+  },
+  ar: {
+    help: 'مساعدة',
+    saveExit: 'حفظ وخروج',
+    back: 'رجوع',
+    languageLabel: 'اللغة',
+    skipToApplication: 'تجاوز إلى التطبيق',
+    step: 'الخطوة',
+    of: 'من',
+    accountOpening: 'فتح الحساب',
+    nextStep: 'خطوتك التالية',
+    applicationReference: 'مرجع الطلب',
+    copy: 'نسخ',
+    verified: 'تم التحقق',
+    change: 'تغيير',
+    selectOption: 'اختر خيارًا',
+    dateFormatHint: 'استخدم YYYY-MM-DD',
+    nameHint: 'صحح أخطاء OCR في الاسم هنا',
+    addressHint: 'يمكنك تحديث عنوانك الحالي لاحقًا إذا كان مختلفًا',
+    mobileHint: 'سنرسل رمز التحقق إلى هذا الرقم',
+    appStatus: 'حالة الطلب',
+    steps: [
+      { short: 'التجهيز', title: 'استعد' },
+      { short: 'الهوية', title: 'تحقق من هويتك' },
+      { short: 'التواصل', title: 'تحقق من بيانات التواصل' },
+      { short: 'العمل', title: 'إثبات العمل' },
+      { short: 'المراجعة', title: 'راجع بياناتك وأكمل' },
+      { short: 'المتابعة', title: 'تم إرسال الطلب' },
+    ],
+    fieldLabels: {
+      nationalId: 'الرقم القومي',
+      dateOfBirth: 'تاريخ الميلاد',
+      fullName: 'الاسم كما يظهر في البطاقة',
+      mobile: 'رقم الهاتف',
+      smsOtp: 'رمز التحقق من الهاتف',
+      email: 'البريد الإلكتروني',
+      emailOtp: 'رمز التحقق من البريد الإلكتروني',
+      governorate: 'المحافظة',
+      address: 'عنوان السكن',
+      employment: 'الحالة الوظيفية',
+      income: 'نطاق الدخل الشهري',
+    },
+    nextLabels: [
+      'تحقق من الأهلية وابدأ',
+      'الانتقال إلى التحقق من التواصل',
+      'الانتقال إلى إثبات العمل',
+      'الانتقال إلى المراجعة',
+      'إرسال الطلب',
+    ],
+    prepare: {
+      lead: 'بضع فحوصات سريعة للتأكد من أن هذه الخدمة مناسبة لك. عادة ما يستغرق إكمال الطلب عبر الإنترنت من 10 إلى 15 دقيقة.',
+      legend: 'أكد أن كل عبارة تنطبق عليك',
+      requirements: [
+        'أنا عميل جديد في الخدمات المصرفية للأفراد في البنك الأهلي المصري',
+        'أقيم حاليًا في مصر',
+        'عمري 21 عامًا أو أكثر',
+        'لدي رقم قومي صالح',
+      ],
+      laterTitle: 'ما قد تحتاجه لاحقًا',
+      docs: [
+        { title: 'الرقم القومي', hint: 'الأصل ونسخة واضحة' },
+        { title: 'إثبات العنوان', hint: 'فقط إذا كان عنوانك مختلفًا' },
+        { title: 'إثبات الدخل أو العمل', hint: 'بناءً على إجابات طلبك' },
+      ],
+      branchLink: 'من ينبغي أن يتقدم إلى الفرع بدلاً من ذلك؟',
+    },
+    identity: {
+      lead: 'نستخدم هذه البيانات لتحديد طلبك وحمايته. أدخل رقم البطاقة القومية وليس رقم جواز السفر.',
+      scanRecommended: 'موصى به',
+      scanTitle: 'امسح بطاقتك القومية',
+      scanDescription: 'ارفع صورة واضحة لاستخراج الرقم القومي المكون من 14 رقمًا. يمكنك مراجعة المحتوى وتعديله قبل المتابعة.',
+      scanButton: 'مسح البطاقة',
+      scanning: 'جارٍ المسح...',
+      scanError: 'تعذر العثور على رقم قومي مكون من 14 رقمًا بشكل موثوق. جرّب صورة أوضح أو أدخله يدويًا.',
+      scanHint: '14 رقمًا كما هو موضح في بطاقتك الوطنية',
+    },
+    contact: {
+      lead: 'تحقق من تفاصيل التواصل التي سيستخدمها البنك لتحديث طلبك. لا تشارك هذا الرمز أبدًا. لن يطلب منك موظفو البنك ذلك.',
+      mobile: 'رقم الهاتف',
+      email: 'البريد الإلكتروني',
+      destinationMobile: 'أضف رقم هاتفك المصري',
+      destinationEmail: 'أضف البريد الإلكتروني الذي تراجعُه بانتظام',
+      verifyMobile: 'تحقق من الهاتف',
+      verifyEmail: 'تحقق من البريد',
+      resendSms: 'إعادة إرسال الرسالة',
+      resendEmail: 'إعادة إرسال البريد',
+      expiresIn: 'تنتهي صلاحية الرمز خلال',
+      security: 'احفظ كل رمز في سرية كاملة. لن يطلب منك موظفو البنك أبدًا قراءة أو إرسال رموز التحقق.',
+      codeLabel: 'رمز التحقق المكوّن من 6 أرقام',
+      confirmMobile: 'تأكيد رمز الهاتف',
+      confirmEmail: 'تأكيد رمز البريد',
+    },
+    application: {
+      lead: 'أخبرنا عن وظيفتك حتى نعد قائمة الدليل المناسبة لزيارتك إلى الفرع أو الموظف.',
+      sectionTitle: 'إثبات العمل',
+      sectionDescription: 'يساعد هذا في تحديد المستندات الداعمة المناسبة',
+      optional: 'اختياري',
+      uploadTitle: 'رفع خطاب توظيف يثبت الدخل',
+      uploadDescription: 'أضف خطاب توظيف يثبت دورك ودخلك إذا كان جاهزًا لديك بالفعل.',
+      replace: 'استبدال خطاب التوظيف',
+      upload: 'رفع خطاب التوظيف',
+      remove: 'حذف',
+      checklist: 'قائمة إثبات عملك',
+      employed: 'حمّل أو أحضر خطابًا من جهة العمل يثبت دخلك إذا كانت مهنة أو دخلِك تحتاج إلى تأكيد.',
+      selfEmployed: 'قد تحتاج إلى رخصة مهنية أو بطاقة ضريبية.',
+      other: 'سنقوم بتحديد ما إذا كانت هناك أدلة إضافية للدخل مطلوبة.',
+    },
+    review: {
+      lead: 'راجع بياناتك، ثم اختر الطريقة التي ستقدم بها المستندات الأصلية والتوقيع الفعلي.',
+      identity: 'الهوية',
+      contact: 'التواصل',
+      identityDetails: 'تفاصيل الهوية',
+      employment: 'الوظيفة',
+      methodTitle: 'كيف تود إكمال طلبك؟',
+      methodCopy: 'ستكون معلوماتك عبر الإنترنت جاهزة عند حضورك.',
+      viewDetails: 'عرض التفاصيل',
+      legalText: 'لقد قرأت وأوافق على الشروط والأحكام الخاصة بفتح الحساب وأؤكد أن معلوماتي دقيقة.',
+      securityNote: 'يؤدي التقديم إلى إنشاء طلب، لكنه لا يفتح الحساب حتى يتحقق البنك من المستندات الأصلية والتوقيع الفعلي.',
+      edit: 'تعديل',
+      methods: {
+        ebranch: 'حجز زيارة فرع إلكتروني',
+        branch: 'زيارة فرع تقليدي',
+        employee: 'طلب زيارة موظف',
+      },
+      methodText: {
+        ebranch: 'اختر فرعًا وتاريخًا ووقتًا مناسبين. سنعرض توافر إصدار البطاقة.',
+        branch: 'زر الفرع خلال 10 أيام عمل واطلب مدير الخدمات المصرفية للأفراد.',
+        employee: 'متاح للعملاء المؤهلين في بعض المحافظات. سنتصل بك خلال يومين عمل.',
+      },
+      tags: {
+        mostConvenient: 'الأكثر ملاءمة',
+        eligibilityApplies: 'يطبق التأهيل',
+      },
+    },
+    success: {
+      lead: 'شكرًا لك، {name}.',
+      requestReady: 'طلبك جاهز',
+      confirmation: 'لقد تلقينا طلب فتح الحساب الخاص بك وأرسلنا تأكيدًا إلى',
+      nextStep: 'خطوتك التالية',
+      method: {
+        ebranch: 'حجز زيارة فرع إلكتروني',
+        branch: 'زيارة فرع تقليدي',
+        employee: 'طلب زيارة موظف',
+      },
+      methodText: {
+        ebranch: 'اختر الفرع والتاريخ والوقت المناسبين لإكمال الطلب.',
+        branch: 'زر الفرع المختار في البنك الأهلي المصري خلال 10 أيام عمل مع المستندات الأصلية.',
+        employee: 'سيتصل بك موظف من البنك على رقم هاتفك الموثق خلال يومين عمل.',
+      },
+      action: {
+        ebranch: 'اختيار الموعد',
+        branch: 'العثور على فرع',
+        employee: 'عرض قائمة التحضير',
+      },
+      statusTitle: 'تم التقديم للإكمال',
+      statusPill: 'في المسار الصحيح',
+      timeline: {
+        submitted: 'تم تقديم الطلب عبر الإنترنت',
+        today: 'اليوم',
+        signature: 'المستندات الأصلية والتوقيع',
+        nextAction: 'إجراءك التالي',
+        review: 'مراجعة البنك',
+        update: 'سنبقيك على اطلاع',
+        accountReady: 'الحساب جاهز',
+        final: 'تأكيد نهائي من البنك',
+      },
+      downloadSummary: 'تحميل الملخص',
+      restart: 'بدء طلب جديد',
+    },
+    footer: {
+      legal: 'الخصوصية',
+      security: 'الأمان',
+      accessibility: 'إمكانية الوصول',
+    },
+  },
 }
-
-const nextLabels = [
-  'Check eligibility and begin',
-  'Continue to contact verification',
-  'Continue to employment proof',
-  'Continue to review',
-  'Submit request',
-]
 
 function App() {
   const [step, setStep] = useState(0)
@@ -132,9 +461,19 @@ function App() {
   const [mobileOtpSent, setMobileOtpSent] = useState(false)
   const [mobileOtpCode, setMobileOtpCode] = useState('')
   const [isMobileVerified, setIsMobileVerified] = useState(false)
+  const [language, setLanguage] = useState(() => localStorage.getItem('nbe_lang') || 'en')
+  const t = translations[language]
   const headingRef = useRef(null)
 
-  const progress = Math.round(((step + 1) / steps.length) * 100)
+  useEffect(() => {
+    document.documentElement.lang = language
+    document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr'
+    localStorage.setItem('nbe_lang', language)
+  }, [language])
+
+  const toggleLanguage = () => setLanguage((current) => (current === 'en' ? 'ar' : 'en'))
+
+  const progress = Math.round(((step + 1) / t.steps.length) * 100)
   const referenceNumber = useMemo(() => 'NBE-26-018427', [])
 
   const update = (name, value) => {
@@ -158,7 +497,7 @@ function App() {
         const fullName = [data.first_name, data.last_name].filter(Boolean).join(' ')
         
         // Find which step they were on
-        const savedStepIndex = steps.findIndex(s => s.short.toLowerCase() === data.current_step)
+        const savedStepIndex = t.steps.findIndex(s => s.short.toLowerCase() === data.current_step)
         if (savedStepIndex !== -1) {
           setStep(savedStepIndex)
         }
@@ -242,7 +581,7 @@ function App() {
     if (step === 3) {
       ;['employment', 'income'].forEach(
         (name) => {
-          if (!form[name].trim()) nextErrors[name] = `${fieldLabels[name]} is required.`
+          if (!form[name].trim()) nextErrors[name] = `${t.fieldLabels[name]} is required.`
         },
       )
     }
@@ -259,7 +598,7 @@ function App() {
   const next = () => {
     if (!validateStep()) return
     if (step === 4) setSubmitted(true)
-    setStep((current) => Math.min(current + 1, steps.length - 1))
+    setStep((current) => Math.min(current + 1, t.steps.length - 1))
     focusHeading()
   }
 
@@ -316,7 +655,7 @@ function App() {
         const createRes = await fetch(`${API_BASE_URL}/api/applications`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ currentStep: steps[step].short.toLowerCase() })
+          body: JSON.stringify({ currentStep: t.steps[step].short.toLowerCase() })
         })
         
         if (!createRes.ok) throw new Error('Failed to create application session.')
@@ -338,7 +677,7 @@ function App() {
           address: form.address,
           mobile: form.mobile,
           email: form.email,
-          currentStep: steps[step].short.toLowerCase()
+          currentStep: t.steps[step].short.toLowerCase()
         })
       })
 
@@ -441,12 +780,15 @@ const handleVerifyMobileOtp = async () => {
 }
 
   return (
-    <div className="app-shell">
-      <a className="skip-link" href="#main-content">Skip to application</a>
+    <div className={`app-shell ${language === 'ar' ? 'rtl' : ''}`}>
+      <a className="skip-link" href="#main-content">{t.skipToApplication}</a>
       <Header
         onSave={() => handleSave()}
         mobileNavOpen={mobileNavOpen}
         setMobileNavOpen={setMobileNavOpen}
+        language={language}
+        toggleLanguage={toggleLanguage}
+        t={t}
       />
 
       <div className="progress-strip" aria-hidden="true">
@@ -454,14 +796,14 @@ const handleVerifyMobileOtp = async () => {
       </div>
 
       <main id="main-content" className="page-wrap">
-        <JourneyNav step={step} onStepSelect={setStep} submitted={submitted} />
+        <JourneyNav step={step} onStepSelect={setStep} submitted={submitted} t={t} />
 
         <section className="content-panel" aria-labelledby="page-title">
-          <div className="step-kicker">Step {step + 1} of {steps.length}</div>
-          <h1 id="page-title" tabIndex="-1" ref={headingRef}>{steps[step].title}</h1>
+          <div className="step-kicker">{t.step} {step + 1} {t.of} {t.steps.length}</div>
+          <h1 id="page-title" tabIndex="-1" ref={headingRef}>{t.steps[step].title}</h1>
 
           {step === 0 && (
-            <PrepareStep form={form} errors={errors} onToggle={updateEligibility} />
+            <PrepareStep form={form} errors={errors} onToggle={updateEligibility} t={t} />
           )}
           {step === 1 && (
             <IdentityStep
@@ -470,6 +812,7 @@ const handleVerifyMobileOtp = async () => {
               update={update}
               ocrResult={ocrResult}
               onOcrResult={applyOcrResult}
+              t={t}
             />
           )}
           {step === 2 && (
@@ -488,37 +831,38 @@ const handleVerifyMobileOtp = async () => {
               onSendMobileOtp={handleSendMobileOtp}
               emailOtpSent={emailOtpSent}
               onSendEmailOtp={handleSendEmailOtp}
+              t={t}
             />
           )}
           {step === 3 && (
-            <ApplicationStep form={form} errors={errors} update={update} />
+            <ApplicationStep form={form} errors={errors} update={update} t={t} />
           )}
           {step === 4 && (
-            <ReviewStep form={form} errors={errors} update={update} goTo={setStep} />
+            <ReviewStep form={form} errors={errors} update={update} goTo={setStep} t={t} />
           )}
           {step === 5 && (
-            <SuccessStep form={form} referenceNumber={referenceNumber} restart={restart} />
+            <SuccessStep form={form} referenceNumber={referenceNumber} restart={restart} t={t} />
           )}
 
           {step < 5 && (
             <div className="form-actions">
               {step > 0 ? (
                 <button className="button button-secondary" type="button" onClick={back}>
-                  <ArrowLeft size={18} aria-hidden="true" /> Back
+                  {language === 'ar' ? <ArrowRight size={18} aria-hidden="true" /> : <ArrowLeft size={18} aria-hidden="true" />} {t.back}
                 </button>
               ) : (
                 <span />
               )}
               <button className="button button-primary" type="button" onClick={next}>
-                {nextLabels[step]}
-                <ArrowRight size={18} aria-hidden="true" />
+                {language === 'ar' ? <ArrowLeft size={18} aria-hidden="true" /> : <ArrowRight size={18} aria-hidden="true" />}
+                {t.nextLabels[step]}
               </button>
             </div>
           )}
         </section>
       </main>
 
-      <Footer />
+      <Footer t={t} />
 
       {toast && (
         <div className="toast" role="status">
@@ -529,7 +873,7 @@ const handleVerifyMobileOtp = async () => {
   )
 }
 
-function Header({ onSave, mobileNavOpen, setMobileNavOpen }) {
+function Header({ onSave, mobileNavOpen, setMobileNavOpen, language, toggleLanguage, t }) {
   return (
     <header className="site-header">
       <div className="header-inner">
@@ -537,12 +881,18 @@ function Header({ onSave, mobileNavOpen, setMobileNavOpen }) {
           <img className="brand-logo" src="/image.png" alt="" />
         </a>
         <nav className={`header-actions ${mobileNavOpen ? 'is-open' : ''}`} aria-label="Support navigation">
-          <span className="prototype-label" aria-label="Prototype language">English prototype</span>
+          <button type="button" className={`lang-toggle ${language === 'ar' ? 'is-ar' : 'is-en'}`} onClick={toggleLanguage} aria-label={t.languageLabel}>
+            <span className="lang-toggle-track">
+              <span className="lang-toggle-label en">EN</span>
+              <span className="lang-toggle-label ar">AR</span>
+              <span className="lang-toggle-thumb" aria-hidden="true" />
+            </span>
+          </button>
           <button type="button" className="header-link" onClick={() => alert('Call NBE support at 19623 for assistance.')}>
-            <CircleHelp size={18} aria-hidden="true" /> Help
+            <CircleHelp size={18} aria-hidden="true" /> {t.help}
           </button>
           <button type="button" className="save-button" onClick={onSave}>
-            <Save size={17} aria-hidden="true" /> Save & exit
+            <Save size={17} aria-hidden="true" /> {t.saveExit}
           </button>
         </nav>
         <button
@@ -559,12 +909,12 @@ function Header({ onSave, mobileNavOpen, setMobileNavOpen }) {
   )
 }
 
-function JourneyNav({ step, onStepSelect, submitted }) {
+function JourneyNav({ step, onStepSelect, submitted, t }) {
   return (
     <aside className="journey-nav" aria-label="Application progress">
-      <p className="journey-label">Account opening</p>
+      <p className="journey-label">{t.accountOpening}</p>
       <ol>
-        {steps.map((item, index) => {
+        {t.steps.map((item, index) => {
           const complete = index < step
           const active = index === step
           const canVisit = index < step || (submitted && index === 5)
@@ -587,20 +937,20 @@ function JourneyNav({ step, onStepSelect, submitted }) {
   )
 }
 
-function PrepareStep({ form, errors, onToggle }) {
+function PrepareStep({ form, errors, onToggle, t }) {
   const requirements = [
-    ['newCustomer', 'I am a new NBE retail customer'],
-    ['resident', 'I currently reside in Egypt'],
-    ['age', 'I am 21 years old or older'],
-    ['validId', 'I have a valid National ID number'],
+    ['newCustomer', t.prepare.requirements[0]],
+    ['resident', t.prepare.requirements[1]],
+    ['age', t.prepare.requirements[2]],
+    ['validId', t.prepare.requirements[3]],
   ]
 
   return (
     <div className="step-body">
-      <p className="lead">A few quick checks will make sure this service is right for you. It usually takes 10-15 minutes to complete the online request.</p>
+      <p className="lead">{t.prepare.lead}</p>
 
       <fieldset className={`checklist-fieldset ${errors.eligibility ? 'has-error' : ''}`}>
-        <legend>Confirm that each statement applies to you</legend>
+        <legend>{t.prepare.legend}</legend>
         <div className="eligibility-grid">
           {requirements.map(([name, label]) => (
             <label className="check-card" key={name}>
@@ -618,18 +968,18 @@ function PrepareStep({ form, errors, onToggle }) {
       </fieldset>
 
       <div className="section-divider" />
-      <h2>What you may need later</h2>
+      <h2>{t.prepare.laterTitle}</h2>
       <div className="document-preview">
-        <div><FileText size={21} /><span><strong>National ID</strong><small>Original and a clear copy</small></span></div>
-        <div><MapPin size={21} /><span><strong>Proof of address</strong><small>Only if your address differs</small></span></div>
-        <div><FileCheck2 size={21} /><span><strong>Income or employment proof</strong><small>Based on your application answers</small></span></div>
+        {t.prepare.docs.map((doc) => (
+          <div key={doc.title}><FileText size={21} /><span><strong>{doc.title}</strong><small>{doc.hint}</small></span></div>
+        ))}
       </div>
-      <button type="button" className="text-button"><Info size={17} /> Who should apply at a branch instead?</button>
+      <button type="button" className="text-button"><Info size={17} /> {t.prepare.branchLink}</button>
     </div>
   )
 }
 
-function IdentityStep({ form, errors, update, ocrResult, onOcrResult }) {
+function IdentityStep({ form, errors, update, ocrResult, onOcrResult, t }) {
   const fileInputRef = useRef(null)
   const [ocrStatus, setOcrStatus] = useState('idle')
   const [ocrError, setOcrError] = useState('')
@@ -671,68 +1021,69 @@ function IdentityStep({ form, errors, update, ocrResult, onOcrResult }) {
 
   return (
     <div className="step-body">
-      <p className="lead">We use these details to locate and protect your application. Enter the National ID number—not the passport number.</p>
+      <p className="lead">{t.identity.lead}</p>
 
       <div className="form-grid two-columns">
         <Field
-          label="National ID number"
+          label={t.fieldLabels.nationalId}
           name="nationalId"
           value={form.nationalId}
           onChange={(value) => update('nationalId', value.replace(/\D/g, '').slice(0, 14))}
           error={errors.nationalId}
-          hint="14 digits, shown on your National ID"
+          hint={t.identity.scanHint}
           inputMode="numeric"
           autoComplete="off"
           placeholder="2980 1010 1234 56"
           isLoading={isOcrScanning}
         />
         <Field
-          label="Date of birth"
+          label={t.fieldLabels.dateOfBirth}
           name="dateOfBirth"
           value={form.dateOfBirth}
           onChange={(value) => update('dateOfBirth', value)}
           error={errors.dateOfBirth}
-          hint="Use YYYY-MM-DD"
+          hint={t.dateFormatHint}
           inputMode="numeric"
           placeholder="1990-06-14"
           isLoading={isOcrScanning}
         />
         <Field
-          label="Name as shown on ID"
+          label={t.fieldLabels.fullName}
           name="fullName"
           value={form.fullName}
           onChange={(value) => update('fullName', value)}
           error={errors.fullName}
-          hint="Correct OCR spelling mistakes here"
+          hint={t.nameHint}
           autoComplete="name"
           isLoading={isOcrScanning}
         />
         <Field
-          label="Address as shown on ID"
+          label={t.fieldLabels.address}
           name="address"
           value={form.address}
           onChange={(value) => update('address', value)}
           error={errors.address}
-          hint="You can update your current residential address later if different"
+          hint={t.addressHint}
           autoComplete="street-address"
           isLoading={isOcrScanning}
         />
         <SelectField
-          label="Governorate from National ID"
+          label={t.fieldLabels.governorate}
           name="governorate"
           value={form.governorate}
           onChange={(value) => update('governorate', value)}
           error={errors.governorate}
           options={governorateOptions}
           isLoading={isOcrScanning}
+          placeholder={t.selectOption}
         />
         <Field
-          label="Mobile number"
+          label={t.fieldLabels.mobile}
           name="mobile"
           value={form.mobile}
           onChange={(value) => update('mobile', value.replace(/\D/g, '').slice(0, 11))}
           error={errors.mobile}
-          hint="We will send a verification code to this number"
+          hint={t.mobileHint}
           inputMode="tel"
           autoComplete="tel"
           placeholder="01X XXXX XXXX"
@@ -743,9 +1094,9 @@ function IdentityStep({ form, errors, update, ocrResult, onOcrResult }) {
       <div className="upload-card">
         <div className="upload-illustration"><UserRound size={26} /></div>
         <div className="upload-copy">
-          <span className="optional-tag">Recommended</span>
-          <h2>Scan your National ID</h2>
-          <p>Upload a clear photo to extract the 14-digit ID number. You can review and edit it before continuing.</p>
+          <span className="optional-tag">{t.identity.scanRecommended}</span>
+          <h2>{t.identity.scanTitle}</h2>
+          <p>{t.identity.scanDescription}</p>
         </div>
         <input
           ref={fileInputRef}
@@ -761,7 +1112,7 @@ function IdentityStep({ form, errors, update, ocrResult, onOcrResult }) {
           disabled={ocrStatus === 'scanning'}
           onClick={() => fileInputRef.current?.click()}
         >
-          <Upload size={18} /> {ocrStatus === 'scanning' ? 'Scanning...' : 'Scan ID'}
+          <Upload size={18} /> {ocrStatus === 'scanning' ? t.identity.scanning : t.identity.scanButton}
         </button>
       </div>
     </div>
@@ -782,26 +1133,28 @@ function ContactStep({
   mobileOtpSent,
   onSendMobileOtp,
   emailOtpSent,        
-  onSendEmailOtp       
+  onSendEmailOtp,
+  t
 }) {
   const maskedMobile = form.mobile ? `${form.mobile.slice(0, 3)} •••• ${form.mobile.slice(-4)}` : '01• •••• ••••'
 
   return (
     <div className="step-body">
-      <p className="lead">Verify the contact details NBE will use for application updates. Never share this code. NBE employees will not ask you for it.</p>
+      <p className="lead">{t.contact.lead}</p>
 
       {/* --- MOBILE VERIFICATION CARD --- */}
       <VerificationCard
         icon={<Smartphone size={22} />}
-        title="Mobile number"
-        destination={mobileVerified ? maskedMobile : form.mobile || 'Add your Egyptian mobile number'}
+        title={t.contact.mobile}
+        destination={mobileVerified ? maskedMobile : form.mobile || t.contact.destinationMobile}
         verified={mobileVerified}
         onEdit={resetMobile}
+        t={t}
       >
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', width: '100%' }}>
           <div style={{ flexGrow: 1 }}>
             <Field
-              label="Mobile number"
+              label={t.contact.mobile}
               name="mobile"
               value={form.mobile}
               onChange={(value) => { update('mobile', value); resetMobile() }}
@@ -821,7 +1174,7 @@ function ContactStep({
               className="button button-primary"
               style={{ marginBottom: '1rem', height: '46px', whiteSpace: 'nowrap' }}
             >
-              Verify Mobile
+              {t.contact.verifyMobile}
             </button>
           )}
         </div>
@@ -835,11 +1188,11 @@ function ContactStep({
               onChange={(value) => update('smsOtp', value)}
               error={errors.smsOtp}
               onVerify={verifyMobile}
-              verifyLabel="Confirm mobile code"
+              verifyLabel={t.contact.confirmMobile}
             />
             <div className="resend-row">
-              <span>Code expires in <strong>05:00</strong></span>
-              <button type="button" onClick={onSendMobileOtp}>Resend SMS</button>
+              <span>{t.contact.expiresIn} <strong>05:00</strong></span>
+              <button type="button" onClick={onSendMobileOtp}>{t.contact.resendSms}</button>
             </div>
           </div>
         )}
@@ -848,15 +1201,16 @@ function ContactStep({
       {/* --- EMAIL VERIFICATION CARD --- */}
       <VerificationCard
         icon={<Mail size={22} />}
-        title="Email address"
-        destination={form.email || 'Add the email you check regularly'}
+        title={t.contact.email}
+        destination={form.email || t.contact.destinationEmail}
         verified={emailVerified}
         onEdit={resetEmail}
+        t={t}
       >
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', width: '100%' }}>
           <div style={{ flexGrow: 1 }}>
             <Field
-              label="Email address"
+              label={t.contact.email}
               name="email"
               value={form.email}
               onChange={(value) => { update('email', value); resetEmail() }}
@@ -876,7 +1230,7 @@ function ContactStep({
               className="button button-primary"
               style={{ marginBottom: '1rem', height: '46px', whiteSpace: 'nowrap' }}
             >
-              Verify Email
+              {t.contact.verifyEmail}
             </button>
           )}
         </div>
@@ -890,11 +1244,11 @@ function ContactStep({
               onChange={(value) => update('emailOtp', value)}
               error={errors.emailOtp}
               onVerify={verifyEmail}
-              verifyLabel="Confirm email code"
+              verifyLabel={t.contact.confirmEmail}
             />
             <div className="resend-row">
-              <span>Code expires in <strong>05:00</strong></span>
-              <button type="button" onClick={onSendEmailOtp}>Resend email</button>
+              <span>{t.contact.expiresIn} <strong>05:00</strong></span>
+              <button type="button" onClick={onSendEmailOtp}>{t.contact.resendEmail}</button>
             </div>
           </div>
         )}
@@ -902,22 +1256,22 @@ function ContactStep({
 
       <div className="security-banner">
         <ShieldCheck size={21} />
-        <span><strong>Keep every code private.</strong> NBE employees will never ask you to read or send them a verification code.</span>
+        <span>{t.contact.security}</span>
       </div>
     </div>
   )
 }
 
-function VerificationCard({ icon, title, destination, verified, onEdit, children }) {
+function VerificationCard({ icon, title, destination, verified, onEdit, children, t }) {
   return (
     <section className={`verification-card ${verified ? 'is-verified' : ''}`}>
       <div className="verification-heading">
         <div className="verification-icon">{icon}</div>
         <div><h2>{title}</h2><p>{destination}</p></div>
-        {verified && <span className="verified-pill"><BadgeCheck size={17} /> Verified</span>}
+        {verified && <span className="verified-pill"><BadgeCheck size={17} /> {t.verified}</span>}
       </div>
       {verified ? (
-        <button className="text-button compact" type="button" onClick={onEdit}>Change {title.toLowerCase()}</button>
+        <button className="text-button compact" type="button" onClick={onEdit}>{t.change} {title.toLowerCase()}</button>
       ) : children}
     </section>
   )
@@ -927,7 +1281,7 @@ function OtpInput({ name, value, onChange, error, onVerify, verifyLabel }) {
   return (
     <div className="otp-group">
       <div className="field grow">
-        <label htmlFor={name}>6-digit verification code</label>
+        <label htmlFor={name}>{verifyLabel}</label>
         <input
           id={name}
           className={error ? 'input-error otp-input' : 'otp-input'}
@@ -946,7 +1300,7 @@ function OtpInput({ name, value, onChange, error, onVerify, verifyLabel }) {
   )
 }
 
-function ApplicationStep({ form, errors, update }) {
+function ApplicationStep({ form, errors, update, t }) {
   const employmentDocumentRef = useRef(null)
   const uploadEmploymentDocument = (event) => {
     const file = event.target.files?.[0]
@@ -962,27 +1316,27 @@ function ApplicationStep({ form, errors, update }) {
 
   return (
     <div className="step-body">
-      <p className="lead">Tell us about your employment so we can prepare the right proof checklist for your branch or employee visit.</p>
+      <p className="lead">{t.application.lead}</p>
 
-      <div className="section-heading"><span>1</span><div><h2>Employment proof</h2><p>This helps determine which supporting documents apply</p></div></div>
+      <div className="section-heading"><span>1</span><div><h2>{t.application.sectionTitle}</h2><p>{t.application.sectionDescription}</p></div></div>
       <div className="form-grid two-columns">
-        <SelectField label="Employment status" name="employment" value={form.employment} onChange={(value) => update('employment', value)} error={errors.employment} options={['Employed', 'Self-employed', 'Retired', 'Student', 'Not currently employed']} />
-        <SelectField label="Monthly income range" name="income" value={form.income} onChange={(value) => update('income', value)} error={errors.income} options={['Less than EGP 10,000', 'EGP 10,000–25,000', 'EGP 25,001–50,000', 'More than EGP 50,000']} />
+        <SelectField label={t.fieldLabels.employment} name="employment" value={form.employment} onChange={(value) => update('employment', value)} error={errors.employment} options={['Employed', 'Self-employed', 'Retired', 'Student', 'Not currently employed']} placeholder={t.selectOption} />
+        <SelectField label={t.fieldLabels.income} name="income" value={form.income} onChange={(value) => update('income', value)} error={errors.income} options={['Less than EGP 10,000', 'EGP 10,000–25,000', 'EGP 25,001–50,000', 'More than EGP 50,000']} placeholder={t.selectOption} />
       </div>
 
       {form.employment && (
         <div className="dynamic-checklist">
           <FileCheck2 size={22} />
-          <div><strong>Your employment proof checklist</strong><p>{form.employment === 'Employed' ? 'Upload or bring an HR letter that proves your income if your profession or income needs confirmation.' : form.employment === 'Self-employed' ? 'You may need a professional licence or tax card.' : 'We will confirm whether additional income evidence applies to you.'}</p></div>
+          <div><strong>{t.application.checklist}</strong><p>{form.employment === 'Employed' ? t.application.employed : form.employment === 'Self-employed' ? t.application.selfEmployed : t.application.other}</p></div>
         </div>
       )}
 
       <div className={`employment-upload ${form.incomeProofDocument ? 'has-file' : ''}`}>
         <div className="upload-illustration"><FileCheck2 size={25} /></div>
         <div>
-          <span className="optional-tag">Optional</span>
-          <h2>Upload HR letter proving income</h2>
-          <p>{form.incomeProofDocument ? `${form.incomeProofDocument.name} · ${formatFileSize(form.incomeProofDocument.size)}` : 'Add an HR letter that confirms your role and income if you already have it ready.'}</p>
+          <span className="optional-tag">{t.application.optional}</span>
+          <h2>{t.application.uploadTitle}</h2>
+          <p>{form.incomeProofDocument ? `${form.incomeProofDocument.name} · ${formatFileSize(form.incomeProofDocument.size)}` : t.application.uploadDescription}</p>
         </div>
         <input
           ref={employmentDocumentRef}
@@ -994,11 +1348,11 @@ function ApplicationStep({ form, errors, update }) {
         <div className="employment-upload-actions">
           {form.incomeProofDocument && (
             <button className="text-button compact" type="button" onClick={() => update('incomeProofDocument', null)}>
-              Remove
+              {t.application.remove}
             </button>
           )}
           <button className="button button-secondary" type="button" onClick={() => employmentDocumentRef.current?.click()}>
-            <Upload size={18} /> {form.incomeProofDocument ? 'Replace HR letter' : 'Upload HR letter'}
+            <Upload size={18} /> {form.incomeProofDocument ? t.application.replace : t.application.upload}
           </button>
         </div>
       </div>
@@ -1006,27 +1360,27 @@ function ApplicationStep({ form, errors, update }) {
   )
 }
 
-function ReviewStep({ form, errors, update, goTo }) {
+function ReviewStep({ form, errors, update, goTo, t }) {
   const methods = [
-    { id: 'ebranch', icon: CalendarDays, title: 'Book an e-branch visit', text: 'Choose a branch, date and time. We will show card-issuance availability.', tag: 'Most convenient' },
-    { id: 'branch', icon: Building2, title: 'Visit a traditional branch', text: 'Visit within 10 working days and ask for the Retail Banking Manager.', tag: '' },
-    { id: 'employee', icon: HandHeart, title: 'Request an employee visit', text: 'Available to eligible customers in select governorates. We will call within two working days.', tag: 'Eligibility applies' },
+    { id: 'ebranch', icon: CalendarDays, title: t.review.methods.ebranch, text: t.review.methodText.ebranch, tag: t.review.tags.mostConvenient },
+    { id: 'branch', icon: Building2, title: t.review.methods.branch, text: t.review.methodText.branch, tag: '' },
+    { id: 'employee', icon: HandHeart, title: t.review.methods.employee, text: t.review.methodText.employee, tag: t.review.tags.eligibilityApplies },
   ]
 
   return (
     <div className="step-body">
-      <p className="lead">Review your details, then choose how you will provide the original documents and physical signature.</p>
+      <p className="lead">{t.review.lead}</p>
 
       <div className="review-card">
-        <ReviewRow title="Identity" value={`National ID ending ${form.nationalId.slice(-4) || '—'} · ${form.dateOfBirth || 'Date of birth not entered'}`} onEdit={() => goTo(1)} />
-        <ReviewRow title="Contact" value={`${form.email || 'Email not entered'} · Verified`} onEdit={() => goTo(2)} />
-        <ReviewRow title="Identity details" value={`${form.fullName || 'Name not entered'} · ${form.governorate || 'Governorate not entered'}`} onEdit={() => goTo(1)} />
-        <ReviewRow title="Employment" value={`${form.employment} · ${form.income} · ${form.incomeProofDocument?.name || 'No HR letter uploaded yet'}`} onEdit={() => goTo(3)} />
+        <ReviewRow title={t.review.identity} value={`National ID ending ${form.nationalId.slice(-4) || '—'} · ${form.dateOfBirth || 'Date of birth not entered'}`} onEdit={() => goTo(1)} t={t} />
+        <ReviewRow title={t.review.contact} value={`${form.email || 'Email not entered'} · ${t.verified}`} onEdit={() => goTo(2)} t={t} />
+        <ReviewRow title={t.review.identityDetails} value={`${form.fullName || 'Name not entered'} · ${form.governorate || 'Governorate not entered'}`} onEdit={() => goTo(1)} t={t} />
+        <ReviewRow title={t.review.employment} value={`${form.employment} · ${form.income} · ${form.incomeProofDocument?.name || 'No HR letter uploaded yet'}`} onEdit={() => goTo(3)} t={t} />
       </div>
 
       <div className="section-divider" />
-      <h2>How would you like to complete your request?</h2>
-      <p className="section-copy">Your online information will be ready when you arrive.</p>
+      <h2>{t.review.methodTitle}</h2>
+      <p className="section-copy">{t.review.methodCopy}</p>
       <div className={`method-grid ${errors.method ? 'has-error' : ''}`}>
         {methods.map(({ id, icon: Icon, title, text, tag }) => (
           <label className={`method-card ${form.method === id ? 'selected' : ''}`} key={id}>
@@ -1036,7 +1390,7 @@ function ReviewStep({ form, errors, update, goTo }) {
             {tag && <span className="method-tag">{tag}</span>}
             <strong>{title}</strong>
             <p>{text}</p>
-            <span className="learn-more">View details <ChevronRight size={15} /></span>
+            <span className="learn-more">{t.review.viewDetails} <ChevronRight size={15} /></span>
           </label>
         ))}
       </div>
@@ -1046,21 +1400,21 @@ function ReviewStep({ form, errors, update, goTo }) {
         <label className="terms-check">
           <input type="checkbox" checked={form.terms} onChange={(event) => update('terms', event.target.checked)} />
           <span className="custom-check"><Check size={15} /></span>
-          <span>I have read and agree to the <button type="button">account-opening terms and conditions</button> and confirm that my information is accurate.</span>
+          <span>{t.review.legalText}</span>
         </label>
         {errors.terms && <FieldError message={errors.terms} />}
       </div>
 
-      <div className="security-banner"><LockKeyhole size={20} /><span>Submitting creates a request—it does not open the account until NBE verifies your original documents and physical signature.</span></div>
+      <div className="security-banner"><LockKeyhole size={20} /><span>{t.review.securityNote}</span></div>
     </div>
   )
 }
 
-function ReviewRow({ title, value, onEdit }) {
+function ReviewRow({ title, value, onEdit, t }) {
   return (
     <div className="review-row">
       <div><strong>{title}</strong><p>{value}</p></div>
-      <button type="button" onClick={onEdit}>Edit</button>
+      <button type="button" onClick={onEdit}>{t.review.edit}</button>
     </div>
   )
 }
@@ -1071,48 +1425,48 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function SuccessStep({ form, referenceNumber, restart }) {
+function SuccessStep({ form, referenceNumber, restart, t }) {
   const methodNames = {
-    ebranch: 'Book an e-branch visit',
-    branch: 'Visit a traditional branch',
-    employee: 'Request an employee visit',
+    ebranch: t.success.method.ebranch,
+    branch: t.success.method.branch,
+    employee: t.success.method.employee,
   }
 
   return (
     <div className="step-body success-body">
       <div className="success-mark"><Check size={34} /></div>
-      <p className="success-lead">Thank you, {form.fullName?.split(' ')[0] || 'your request is ready'}.</p>
-      <p>We have received your account-opening request and sent a confirmation to <strong>{form.email || 'your verified email'}</strong>.</p>
+      <p className="success-lead">{t.success.lead.replace('{name}', form.fullName?.split(' ')[0] || t.success.requestReady)}.</p>
+      <p>{t.success.confirmation} <strong>{form.email || 'your verified email'}</strong>.</p>
 
       <div className="reference-card">
-        <span>Application reference</span>
+        <span>{t.applicationReference}</span>
         <strong>{referenceNumber}</strong>
-        <button type="button" onClick={() => navigator.clipboard?.writeText(referenceNumber)}>Copy</button>
+        <button type="button" onClick={() => navigator.clipboard?.writeText(referenceNumber)}>{t.copy}</button>
       </div>
 
       <div className="next-step-card">
         <div className="next-step-icon"><CalendarDays size={25} /></div>
         <div>
-          <span className="eyebrow">Your next step</span>
+          <span className="eyebrow">{t.nextStep}</span>
           <h2>{methodNames[form.method] || 'Complete your documents and signature'}</h2>
-          <p>{form.method === 'employee' ? 'An NBE employee will call your verified mobile number within two working days.' : form.method === 'ebranch' ? 'Choose your preferred branch, date and time to complete the request.' : 'Visit your chosen NBE branch within 10 working days with the original documents.'}</p>
-          <button className="button button-primary" type="button">{form.method === 'ebranch' ? 'Choose appointment' : form.method === 'employee' ? 'View preparation checklist' : 'Find a branch'} <ArrowRight size={18} /></button>
+          <p>{form.method === 'employee' ? t.success.methodText.employee : form.method === 'ebranch' ? t.success.methodText.ebranch : t.success.methodText.branch}</p>
+          <button className="button button-primary" type="button">{form.method === 'ebranch' ? t.success.action.ebranch : form.method === 'employee' ? t.success.action.employee : t.success.action.branch} <ArrowRight size={18} /></button>
         </div>
       </div>
 
       <div className="status-section">
-        <div className="status-heading"><div><span className="eyebrow">Application status</span><h2>Submitted for completion</h2></div><span className="status-pill">On track</span></div>
+        <div className="status-heading"><div><span className="eyebrow">{t.appStatus}</span><h2>{t.success.statusTitle}</h2></div><span className="status-pill">{t.success.statusPill}</span></div>
         <ol className="status-timeline">
-          <li className="done"><span><Check size={14} /></span><div><strong>Online request submitted</strong><small>Today</small></div></li>
-          <li className="active"><span>2</span><div><strong>Original documents and signature</strong><small>Your next action</small></div></li>
-          <li><span>3</span><div><strong>NBE review</strong><small>We will keep you updated</small></div></li>
-          <li><span>4</span><div><strong>Account ready</strong><small>Final confirmation by NBE</small></div></li>
+          <li className="done"><span><Check size={14} /></span><div><strong>{t.success.timeline.submitted}</strong><small>{t.success.timeline.today}</small></div></li>
+          <li className="active"><span>2</span><div><strong>{t.success.timeline.signature}</strong><small>{t.success.timeline.nextAction}</small></div></li>
+          <li><span>3</span><div><strong>{t.success.timeline.review}</strong><small>{t.success.timeline.update}</small></div></li>
+          <li><span>4</span><div><strong>{t.success.timeline.accountReady}</strong><small>{t.success.timeline.final}</small></div></li>
         </ol>
       </div>
 
       <div className="success-actions">
-        <button className="button button-secondary" type="button">Download summary</button>
-        <button className="text-button" type="button" onClick={restart}>Start another prototype request</button>
+        <button className="button button-secondary" type="button">{t.success.downloadSummary}</button>
+        <button className="text-button" type="button" onClick={restart}>{t.success.restart}</button>
       </div>
     </div>
   )
@@ -1138,12 +1492,12 @@ function Field({ label, name, value, onChange, error, hint, isLoading, isComplet
   )
 }
 
-function SelectField({ label, name, value, onChange, error, options, isLoading }) {
+function SelectField({ label, name, value, onChange, error, options, isLoading, placeholder }) {
   return (
     <div className={`field ${isLoading ? 'is-loading' : ''}`} aria-busy={isLoading || undefined}>
       <label htmlFor={name}>{label}</label>
       <select id={name} value={value} onChange={(event) => onChange(event.target.value)} className={`${error ? 'input-error' : ''} ${value ? 'is-filled' : ''} ${isLoading ? 'is-shimmering' : ''}`.trim()} aria-invalid={Boolean(error)} aria-describedby={error ? `${name}-error` : undefined}>
-        <option value="">Select an option</option>
+        <option value="">{placeholder || 'Select an option'}</option>
         {options.map((option) => <option key={option} value={option}>{option}</option>)}
       </select>
       {error && <FieldError id={`${name}-error`} message={error} />}
@@ -1155,11 +1509,11 @@ function FieldError({ id, message }) {
   return <span id={id} className="field-error"><Info size={15} aria-hidden="true" /> {message}</span>
 }
 
-function Footer() {
+function Footer({ t }) {
   return (
     <footer className="site-footer">
       <div><Landmark size={19} /><span>National Bank of Egypt</span></div>
-      <nav aria-label="Legal"><a href="#privacy">Privacy</a><a href="#security">Security</a><a href="#accessibility">Accessibility</a><a href="tel:19623"><Phone size={14} /> 19623</a></nav>
+      <nav aria-label="Legal"><a href="#privacy">{t.footer.legal}</a><a href="#security">{t.footer.security}</a><a href="#accessibility">{t.footer.accessibility}</a><a href="tel:19623"><Phone size={14} /> 19623</a></nav>
     </footer>
   )
 }

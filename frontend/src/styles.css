@@ -32,15 +32,68 @@ a { color: inherit; }
 .skip-link:focus { transform: translateY(0); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
+.app-shell { direction: ltr; }
+.app-shell.rtl { direction: rtl; }
 .site-header { background: rgba(255, 255, 255, .78); border-bottom: 1px solid rgba(220, 228, 224, .72); position: sticky; top: 0; z-index: 20; backdrop-filter: blur(18px) saturate(170%); }
 .header-inner { max-width: 1440px; height: 78px; margin: auto; padding: 0 48px; display: flex; align-items: center; justify-content: space-between; }
 .brand { display: inline-flex; align-items: center; text-decoration: none; }
+.app-shell.rtl .header-inner,
+.app-shell.rtl .form-actions,
+.app-shell.rtl .status-heading,
+.app-shell.rtl .next-step-card,
+.app-shell.rtl .verification-heading,
+.app-shell.rtl .review-row,
+.app-shell.rtl .dynamic-checklist,
+.app-shell.rtl .security-banner,
+.app-shell.rtl .upload-card,
+.app-shell.rtl .employment-upload,
+.app-shell.rtl .ocr-review-heading,
+.app-shell.rtl .privacy-note,
+.app-shell.rtl .header-actions,
+.app-shell.rtl .step-body,
+.app-shell.rtl .journey-nav button,
+.app-shell.rtl .check-card,
+.app-shell.rtl .terms-check {
+  direction: rtl;
+}
+.app-shell.rtl .header-actions,
+.app-shell.rtl .journey-nav button,
+.app-shell.rtl .check-card,
+.app-shell.rtl .terms-check,
+.app-shell.rtl .review-row,
+.app-shell.rtl .verification-heading,
+.app-shell.rtl .dynamic-checklist,
+.app-shell.rtl .security-banner,
+.app-shell.rtl .upload-card,
+.app-shell.rtl .employment-upload,
+.app-shell.rtl .header-inner {
+  text-align: right;
+}
+.app-shell.rtl .journey-nav button { justify-content: flex-start; }
+.app-shell.rtl .save-button,
+.app-shell.rtl .header-link,
+.app-shell.rtl .text-button,
+.app-shell.rtl .button,
+.app-shell.rtl .review-row button,
+.app-shell.rtl .reference-card button,
+.app-shell.rtl .resend-row button {
+  direction: rtl;
+}
 .brand-logo { display: block; width: auto; height: 52px; object-fit: contain; }
 .header-actions { display: flex; align-items: center; gap: 8px; }
-.prototype-label { padding: 6px 10px; color: #4f625a; background: rgba(243, 246, 244, .78); border: 1px solid rgba(255,255,255,.7); border-radius: 999px; font-size: 10px; font-weight: 700; }
 .header-link, .save-button { min-height: 42px; border: 0; background: transparent; display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; color: #33433d; font-weight: 600; border-radius: 8px; transition: background .16s ease, color .16s ease, transform .1s ease; }
 .header-link:hover { background: #f2f6f4; color: var(--nbe-green); }
 .header-link:active, .save-button:active, .text-button:active { transform: scale(var(--press-scale)); }
+.lang-toggle { min-height: 42px; border: 0; background: transparent; display: inline-flex; align-items: center; justify-content: center; padding: 0; border-radius: 999px; cursor: pointer; transition: transform .16s ease; }
+.lang-toggle:hover { filter: brightness(1.04); }
+.lang-toggle:active { transform: scale(var(--press-scale)); }
+.lang-toggle-track { position: relative; width: 90px; height: 34px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-radius: 999px; background: linear-gradient(135deg, #0e7c5b 0%, #005d41 100%); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15), 0 6px 16px rgba(0, 102, 67, 0.16); }
+.lang-toggle-thumb { position: absolute; top: 4px; left: 4px; width: 44px; height: 26px; border-radius: 999px; background: rgba(255,255,255,0.96); box-shadow: 0 2px 8px rgba(0,0,0,0.12); transition: transform .28s cubic-bezier(.2,.8,.2,1); }
+.lang-toggle.is-ar .lang-toggle-thumb { transform: translateX(0); }
+.lang-toggle.is-en .lang-toggle-thumb { transform: translateX(0); }
+.lang-toggle-label { position: relative; z-index: 1; width: 50%; display: inline-flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.78); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; transition: color .2s ease; }
+.lang-toggle.is-en .lang-toggle-label.en,
+.lang-toggle.is-ar .lang-toggle-label.ar { color: var(--nbe-green); }
 .save-button { border: 1px solid #b8cbc3; padding-inline: 16px; color: var(--nbe-green); }
 .save-button:hover { background: var(--nbe-green-soft); border-color: var(--nbe-green); }
 .menu-button { display: none; min-width: 44px; min-height: 44px; border: 0; color: var(--nbe-green); background: transparent; border-radius: 8px; transition: background .16s ease, transform .1s ease; }
