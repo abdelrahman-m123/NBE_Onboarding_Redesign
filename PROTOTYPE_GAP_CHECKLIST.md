@@ -15,11 +15,11 @@ Use this as the living checklist for the redesign prototype. When a gap is compl
 ## Verification And Security
 
 - [x] Add backend OCR extraction for uploaded National ID images and prefill review in the identity step.
-- [ ] Implement real SMS OTP behavior: expiry, resend limits, attempt limits, lockouts, and invalidation of previous codes after resend.
-- [ ] Implement real email verification behavior with secure delivery, resend, change-email, and recovery states.
+- [x] Implement real SMS OTP behavior: expiry, resend limits, attempt limits, lockouts, and invalidation of previous codes after resend.
+- [x] Implement real email verification behavior with secure delivery, resend, change-email, and recovery states.
 - [ ] Add secure generic error handling to avoid identity or account enumeration.
 - [ ] Add real identity verification or e-KYC flow, if approved by NBE compliance and CBE requirements.
-- [ ] Add National ID authenticity checks, expiry checks, and compliance-approved customer review records before prefill.
+- [x] Add National ID authenticity checks, expiry checks, and compliance-approved customer review records before prefill.
 - [ ] Add selfie/liveness or risk-based step-up checks, if legally and operationally approved.
 - [ ] Add manual-review routing for uncertain identity, document, fraud, or verification outcomes.
 - [ ] Add fraud controls such as rate limiting, abnormal velocity checks, device/network signals, and SIM-swap checks where permitted.
@@ -28,7 +28,7 @@ Use this as the living checklist for the redesign prototype. When a gap is compl
 
 ## Application Form And Documents
 
-- [ ] Expand the form to cover all required personal, address, employment, income, tax, regulatory, and account-preference fields.
+- [x] Expand the form to cover all required personal, address, employment, income, tax, regulatory, and account-preference fields.
 - [ ] Add conditional document checklist logic based on address mismatch, profession mismatch, income proof, birthplace, US nationality, and foreign residency.
 - [ ] Add document upload or digital document capture only if supported by NBE compliance and operations.
 - [ ] Preserve valid field data after errors and failed submission attempts.

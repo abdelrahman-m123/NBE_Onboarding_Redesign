@@ -3,14 +3,13 @@ import cors from 'cors'
 import express from 'express'
 import helmet from 'helmet'
 import multer from 'multer'
-import nodemailer from 'nodemailer'
 import { pool, query } from './db.js'
 import { logger, requestLogger } from './logger.js'
 import { recognizeNationalId } from './ocr.js'
 import { sendOtpEmail } from './mailer.js'
-import { generateMobileOtp, verifyMobileOtp } from './sms.js'
-import {startTelegramBotListener} from './sms.js'
-
+import { generateMobileOtp, verifyMobileOtp, startTelegramBotListener } from './sms.js'
+import { validateOnboardingProfile } from './middleware.js'
+import crmRoutes from './crm-routes.js'
 
 const app = express()
 const port = Number(process.env.PORT || 4000)
@@ -36,6 +35,9 @@ app.use(helmet())
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173' }))
 app.use(express.json({ limit: '1mb' }))
 app.use(requestLogger)
+
+// --- CRM BACK-OFFICE OPERATIONS ROUTES ---
+app.use('/api/crm', crmRoutes)
 
 // --- HEALTH ROUTES ---
 app.get('/api/health', (_request, response) => {
@@ -99,7 +101,7 @@ app.post('/api/applications', async (request, response) => {
   }
 })
 
-app.put('/api/applications/:id/profile', async (request, response) => {
+app.put('/api/applications/:id/profile', validateOnboardingProfile, async (request, response) => {
   const { id } = request.params
   const { 
     nationalId, 
@@ -108,37 +110,48 @@ app.put('/api/applications/:id/profile', async (request, response) => {
     governorate, 
     address, 
     mobile, 
-    email, 
+    email,
+    employment,
+    income,
+    method,
+    status,
     currentStep 
   } = request.body
 
   try {
-    if (currentStep) {
-      await query(
-        `update public.applications set current_step = $1, updated_at = now() where id = $2`,
-        [currentStep, id]
-      )
-    }
+    // 1. Update the parent application
+    await query(
+      `UPDATE public.applications 
+       SET current_step = COALESCE($1, current_step),
+           submission_method = COALESCE($2, submission_method),
+           status = COALESCE($3, status),
+           updated_at = NOW() 
+       WHERE id = $4`,
+      [currentStep || null, method || null, status || null, id]
+    )
 
+    // 2. Update applicant profile details
     const nameParts = fullName ? fullName.trim().split(' ') : []
     const firstName = nameParts[0] || null
     const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null
     const dob = dateOfBirth ? dateOfBirth : null
 
     await query(
-      `insert into public.applicant_profiles 
-        (application_id, national_id_hash, first_name, last_name, date_of_birth, governorate, address_line, mobile_hash, email_hash)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       on conflict (application_id) do update set 
-        national_id_hash = excluded.national_id_hash,
-        first_name = excluded.first_name,
-        last_name = excluded.last_name,
-        date_of_birth = excluded.date_of_birth,
-        governorate = excluded.governorate,
-        address_line = excluded.address_line,
-        mobile_hash = excluded.mobile_hash,
-        email_hash = excluded.email_hash,
-        updated_at = now()`,
+      `INSERT INTO public.applicant_profiles 
+        (application_id, national_id_hash, first_name, last_name, date_of_birth, governorate, address_line, mobile_hash, email_hash, employment_status, income_range)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       ON CONFLICT (application_id) DO UPDATE SET 
+        national_id_hash = COALESCE(excluded.national_id_hash, public.applicant_profiles.national_id_hash),
+        first_name = COALESCE(excluded.first_name, public.applicant_profiles.first_name),
+        last_name = COALESCE(excluded.last_name, public.applicant_profiles.last_name),
+        date_of_birth = COALESCE(excluded.date_of_birth, public.applicant_profiles.date_of_birth),
+        governorate = COALESCE(excluded.governorate, public.applicant_profiles.governorate),
+        address_line = COALESCE(excluded.address_line, public.applicant_profiles.address_line),
+        mobile_hash = COALESCE(excluded.mobile_hash, public.applicant_profiles.mobile_hash),
+        email_hash = COALESCE(excluded.email_hash, public.applicant_profiles.email_hash),
+        employment_status = COALESCE(excluded.employment_status, public.applicant_profiles.employment_status),
+        income_range = COALESCE(excluded.income_range, public.applicant_profiles.income_range),
+        updated_at = NOW()`,
       [
         id, 
         nationalId || null, 
@@ -148,7 +161,9 @@ app.put('/api/applications/:id/profile', async (request, response) => {
         governorate || null, 
         address || null,
         mobile || null,
-        email || null
+        email || null,
+        employment || null,
+        income || null
       ]
     )
 
@@ -184,11 +199,28 @@ app.get('/api/applications/:id/profile', async (request, response) => {
 })
 
 // --- OTP & EMAIL ROUTES ---
+// --- In-Memory Email OTP Store ---
+const emailOtpStore = new Map()
+
+// --- OTP & EMAIL ROUTES ---
 app.post('/api/applications/:id/send-email-otp', async (request, response) => {
+  const { id } = request.params
   const { email } = request.body
+
+  if (!email) {
+    return response.status(400).json({ message: 'Email is required.' })
+  }
+
   const otpCode = Math.floor(100000 + Math.random() * 900000).toString()
 
   try {
+    // Store OTP for verification with a 5-minute expiry
+    emailOtpStore.set(id, {
+      code: otpCode,
+      email,
+      expiresAt: Date.now() + 5 * 60 * 1000,
+    })
+
     await sendOtpEmail(email, otpCode)
     logger.info(`🚨 PROTOTYPE OTP FOR ${email}: ${otpCode} 🚨`)
     response.json({ message: 'OTP sent successfully!' })
@@ -197,6 +229,37 @@ app.post('/api/applications/:id/send-email-otp', async (request, response) => {
     response.status(500).json({ error: 'Failed to send OTP email.' })
   }
 })
+
+// --- EMAIL OTP VERIFICATION (The Missing Route) ---
+app.post('/api/applications/:id/verify-email-otp', async (request, response) => {
+  const { id } = request.params
+  const { code } = request.body
+
+  if (!code || String(code).trim().length !== 6) {
+    return response.status(400).json({ message: 'Please provide a valid 6-digit code.' })
+  }
+
+  const record = emailOtpStore.get(id)
+
+  if (!record) {
+    return response.status(400).json({ message: 'No verification code found. Please request a new code.' })
+  }
+
+  if (Date.now() > record.expiresAt) {
+    emailOtpStore.delete(id)
+    return response.status(400).json({ message: 'Verification code has expired. Please request a new code.' })
+  }
+
+  if (record.code !== String(code).trim()) {
+    return response.status(400).json({ message: 'Incorrect verification code.' })
+  }
+
+  // Cleanup after successful verification
+  emailOtpStore.delete(id)
+  logger.info('application.email_verified', { applicationId: id, email: record.email })
+  response.json({ success: true, message: 'Email address verified successfully.' })
+})
+
 app.post('/api/applications/:id/send-mobile-otp', async (request, response) => {
   const { id } = request.params
   const { mobile } = request.body
@@ -206,7 +269,7 @@ app.post('/api/applications/:id/send-mobile-otp', async (request, response) => {
   }
 
   try {
-    generateMobileOtp(id, mobile.trim())
+    await generateMobileOtp(id, mobile.trim())
     response.json({ message: 'Verification SMS sent successfully.' })
   } catch (error) {
     logger.error('sms.dispatch_failed', { id, error })
@@ -325,5 +388,4 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (error) => {
   logger.error('process.unhandled_rejection', { error })
   process.exit(1)
-  
 })
