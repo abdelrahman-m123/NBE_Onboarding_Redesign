@@ -8,9 +8,11 @@ create table if not exists public.applications (
   language text not null default 'en',
   submission_method text,
   submitted_at timestamptz,
+  assigned_officer text default 'Unassigned',
+  rejection_reason text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint applications_status_check check (status in ('draft', 'submitted', 'awaiting_documents', 'manual_review', 'approved', 'rejected', 'cancelled')),
+  constraint applications_status_check check (status in ('draft', 'submitted', 'under_review', 'awaiting_documents', 'manual_review', 'approved', 'rejected', 'cancelled')),
   constraint applications_current_step_check check (current_step in ('prepare', 'identity', 'contact', 'application', 'review', 'track')),
   constraint applications_language_check check (language in ('en', 'ar')),
   constraint applications_submission_method_check check (submission_method is null or submission_method in ('ebranch', 'branch', 'employee_visit', 'digital'))
@@ -157,8 +159,22 @@ create table if not exists public.audit_events (
   constraint audit_events_actor_type_check check (actor_type in ('customer', 'system', 'bank_user'))
 );
 
+-- CRM Audit Trail
+create table if not exists public.crm_audit_trail (
+  id uuid primary key default gen_random_uuid(),
+  application_id uuid not null references public.applications(id) on delete cascade,
+  action text not null,
+  performed_by text not null,
+  previous_status text,
+  new_status text,
+  notes text,
+  created_at timestamptz not null default now()
+);
+
+-- Indexes
 create index if not exists idx_applications_reference_number on public.applications(reference_number);
 create index if not exists idx_applications_status on public.applications(status);
+create index if not exists idx_applications_assigned_officer on public.applications(assigned_officer);
 create index if not exists idx_applicant_profiles_national_id_hash on public.applicant_profiles(national_id_hash);
 create index if not exists idx_applicant_profiles_mobile_hash on public.applicant_profiles(mobile_hash);
 create index if not exists idx_applicant_profiles_email_hash on public.applicant_profiles(email_hash);
@@ -168,7 +184,9 @@ create index if not exists idx_document_requirements_application on public.docum
 create index if not exists idx_appointments_application on public.appointments(application_id);
 create index if not exists idx_status_events_application_created on public.status_events(application_id, created_at desc);
 create index if not exists idx_audit_events_application_created on public.audit_events(application_id, created_at desc);
+create index if not exists idx_crm_audit_trail_application on public.crm_audit_trail(application_id, created_at desc);
 
+-- Triggers
 create or replace function public.set_updated_at()
 returns trigger as $$
 begin

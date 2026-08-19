@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, useEffect } from 'react'
+import { CrmDashboard } from './crmDashboard'
 import {
   ArrowLeft,
   ArrowRight,
@@ -441,6 +442,7 @@ function App() {
   const [form, setForm] = useState(initialForm)
   const [applicationId, setApplicationId] = useState(null)
   const [errors, setErrors] = useState({})
+  const [viewMode, setViewMode] = useState('form') 
   const [toast, setToast] = useState('')
   const [mobileVerified, setMobileVerified] = useState(false)
   const [emailVerified, setEmailVerified] = useState(false)
@@ -581,13 +583,22 @@ function App() {
     return Object.keys(nextErrors).length === 0
   }
 
-  const next = () => {
+  const next = async () => {
     if (!validateStep()) return
-    if (step === 4) setSubmitted(true)
+
+    if (step === 4) {
+      // Step 4 is Review -> Clicking "Submit request"
+      setSubmitted(true)
+      await handleSave('submitted', 'track')
+      showToast('Application successfully submitted!')
+    } else {
+      // Auto-save progress as user advances each step
+      handleSave(null, t.steps[step + 1].short.toLowerCase())
+    }
+
     setStep((current) => Math.min(current + 1, t.steps.length - 1))
     focusHeading()
   }
-
   const back = () => {
     setStep((current) => Math.max(current - 1, 0))
     setErrors({})
@@ -611,7 +622,7 @@ function App() {
     focusHeading()
   }
 
-  const handleSave = async () => {
+  const handleSave = async (overrideStatus = null, overrideStep = null) => {
     try {
       let currentAppId = applicationId
 
@@ -640,17 +651,19 @@ function App() {
           address: form.address,
           mobile: form.mobile,
           email: form.email,
-          currentStep: t.steps[step].short.toLowerCase()
+          employment: form.employment,
+          income: form.income,
+          method: form.method,
+          status: overrideStatus,
+          currentStep: overrideStep || t.steps[step].short.toLowerCase()
         })
       })
 
       if (!updateRes.ok) throw new Error('Failed to save profile data.')
 
-      showToast('Application securely saved! You can resume later.')
       return currentAppId
     } catch (error) {
       console.error('Save error:', error)
-      showToast('Error saving application. Please check your connection.')
       return null
     }
   }
@@ -757,6 +770,9 @@ function App() {
       setErrors((current) => ({ ...current, smsOtp: error.message || 'Invalid code.' }))
     }
   }
+  if (viewMode === 'crm') {
+    return <CrmDashboard onBackToForm={() => setViewMode('form')} />
+  }
 
   return (
     <div className={`app-shell ${language === 'ar' ? 'rtl' : ''}`}>
@@ -767,6 +783,7 @@ function App() {
         setMobileNavOpen={setMobileNavOpen}
         language={language}
         toggleLanguage={toggleLanguage}
+        onOpenCrm={() => setViewMode('crm')}
         t={t}
       />
 
@@ -853,7 +870,7 @@ function App() {
   )
 }
 
-function Header({ onSave, mobileNavOpen, setMobileNavOpen, language, toggleLanguage, t }) {
+function Header({ onSave, mobileNavOpen, setMobileNavOpen, language, toggleLanguage,onOpenCrm, t }) {
   return (
     <header className="site-header">
       <div className="header-inner">
@@ -861,6 +878,14 @@ function Header({ onSave, mobileNavOpen, setMobileNavOpen, language, toggleLangu
           <img className="brand-logo" src="/image.png" alt="" />
         </a>
         <nav className={`header-actions ${mobileNavOpen ? 'is-open' : ''}`} aria-label="Support navigation">
+          <button
+            type="button"
+            className="header-link"
+            onClick={onOpenCrm}
+            style={{ color: '#006643', fontWeight: '700' }}
+          >
+            <Building2 size={18} /> Staff CRM
+          </button>
           <button type="button" className={`lang-toggle ${language === 'ar' ? 'is-ar' : 'is-en'}`} onClick={toggleLanguage} aria-label={t.languageLabel}>
             <span className="lang-toggle-track">
               <span className="lang-toggle-label en">EN</span>
