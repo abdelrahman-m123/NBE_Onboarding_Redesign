@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState, useEffect } from 'react'
-import { CrmDashboard } from './crmDashboard'
+import { StaffLoginModal } from './StaffLoginModal'
+import { CrmDashboard } from './CrmDashboard'
+import { SummaryReceipt } from './SummaryReceipt'
 import {
   ArrowLeft,
   ArrowRight,
@@ -10,7 +12,6 @@ import {
   CheckCircle2,
   ChevronRight,
   CircleHelp,
-  Clock3,
   FileCheck2,
   FileText,
   HandHeart,
@@ -18,7 +19,6 @@ import {
   Landmark,
   LockKeyhole,
   Mail,
-  MapPin,
   Menu,
   Phone,
   Save,
@@ -82,7 +82,7 @@ const initialForm = {
   employment: '',
   income: '',
   incomeProofDocument: null,
-  method: '',
+  method: 'branch',
   terms: false,
 }
 
@@ -221,7 +221,7 @@ const translations = {
       },
     },
     success: {
-      lead: 'Thank you, {name}.',
+      lead: 'Thank you, {name}',
       requestReady: 'your request is ready',
       confirmation: 'We have received your account-opening request and sent a confirmation to',
       nextStep: 'Your next step',
@@ -395,7 +395,7 @@ const translations = {
       },
     },
     success: {
-      lead: 'شكرًا لك، {name}.',
+      lead: 'شكرًا لك، {name}',
       requestReady: 'طلبك جاهز',
       confirmation: 'لقد تلقينا طلب فتح الحساب الخاص بك وأرسلنا تأكيدًا إلى',
       nextStep: 'خطوتك التالية',
@@ -442,7 +442,8 @@ function App() {
   const [form, setForm] = useState(initialForm)
   const [applicationId, setApplicationId] = useState(null)
   const [errors, setErrors] = useState({})
-  const [viewMode, setViewMode] = useState('form') 
+  const [viewMode, setViewMode] = useState('form')
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
   const [toast, setToast] = useState('')
   const [mobileVerified, setMobileVerified] = useState(false)
   const [emailVerified, setEmailVerified] = useState(false)
@@ -453,6 +454,16 @@ function App() {
   const [mobileOtpSent, setMobileOtpSent] = useState(false)
   const [language, setLanguage] = useState(() => localStorage.getItem('nbe_lang') || 'en')
   const headingRef = useRef(null)
+  const [showReceipt, setShowReceipt] = useState(false)
+
+  const [currentOfficer, setCurrentOfficer] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('nbe_staff_auth')
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
+    }
+  })
 
   const t = translations[language]
 
@@ -464,7 +475,7 @@ function App() {
 
   const toggleLanguage = () => setLanguage((current) => (current === 'en' ? 'ar' : 'en'))
 
-  const progress = Math.round(((step + 1) / t.steps.length) * 100)
+  const progress = Math.round(((step + 1) / (t?.steps?.length || 6)) * 100)
   const referenceNumber = useMemo(() => 'NBE-26-018427', [])
 
   const update = (name, value) => {
@@ -480,18 +491,18 @@ function App() {
       try {
         const response = await fetch(`${API_BASE_URL}/api/applications/${savedAppId}/profile`)
         if (!response.ok) throw new Error('Could not load profile')
-        
+
         const data = await response.json()
         setApplicationId(savedAppId)
-        
+
         const fullName = [data.first_name, data.last_name].filter(Boolean).join(' ')
-        
-        const savedStepIndex = t.steps.findIndex(s => s.short.toLowerCase() === data.current_step)
+
+        const savedStepIndex = t.steps.findIndex((s) => s.short.toLowerCase() === data.current_step)
         if (savedStepIndex !== -1) {
           setStep(savedStepIndex)
         }
 
-        setForm(current => ({
+        setForm((current) => ({
           ...current,
           nationalId: data.national_id_hash || current.nationalId,
           fullName: fullName || current.fullName,
@@ -501,7 +512,7 @@ function App() {
           mobile: data.mobile_hash || current.mobile,
           email: data.email_hash || current.email,
         }))
-        
+
         showToast('Your previous progress has been restored.')
       } catch (error) {
         console.error('Failed to resume application:', error)
@@ -523,7 +534,14 @@ function App() {
       governorate: result.extracted.governorate || current.governorate,
       address: result.extracted.address || current.address,
     }))
-    setErrors((current) => ({ ...current, nationalId: undefined, dateOfBirth: undefined, fullName: undefined, governorate: undefined, address: undefined }))
+    setErrors((current) => ({
+      ...current,
+      nationalId: undefined,
+      dateOfBirth: undefined,
+      fullName: undefined,
+      governorate: undefined,
+      address: undefined,
+    }))
   }
 
   const updateEligibility = (name) => {
@@ -567,11 +585,9 @@ function App() {
     }
 
     if (step === 3) {
-      ;['employment', 'income'].forEach(
-        (name) => {
-          if (!form[name].trim()) nextErrors[name] = `${t.fieldLabels[name]} is required.`
-        },
-      )
+      ;['employment', 'income'].forEach((name) => {
+        if (!form[name].trim()) nextErrors[name] = `${t.fieldLabels[name]} is required.`
+      })
     }
 
     if (step === 4) {
@@ -587,18 +603,17 @@ function App() {
     if (!validateStep()) return
 
     if (step === 4) {
-      // Step 4 is Review -> Clicking "Submit request"
       setSubmitted(true)
       await handleSave('submitted', 'track')
       showToast('Application successfully submitted!')
     } else {
-      // Auto-save progress as user advances each step
-      handleSave(null, t.steps[step + 1].short.toLowerCase())
+      handleSave(null, t.steps[step + 1]?.short.toLowerCase())
     }
 
-    setStep((current) => Math.min(current + 1, t.steps.length - 1))
+    setStep((current) => Math.min(current + 1, (t?.steps?.length || 6) - 1))
     focusHeading()
   }
+
   const back = () => {
     setStep((current) => Math.max(current - 1, 0))
     setErrors({})
@@ -630,9 +645,9 @@ function App() {
         const createRes = await fetch(`${API_BASE_URL}/api/applications`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ currentStep: t.steps[step].short.toLowerCase() })
+          body: JSON.stringify({ currentStep: t.steps[step]?.short.toLowerCase() || 'prepare' }),
         })
-        
+
         if (!createRes.ok) throw new Error('Failed to create application session.')
         const createData = await createRes.json()
         currentAppId = createData.id
@@ -655,8 +670,8 @@ function App() {
           income: form.income,
           method: form.method,
           status: overrideStatus,
-          currentStep: overrideStep || t.steps[step].short.toLowerCase()
-        })
+          currentStep: overrideStep || t.steps[step]?.short.toLowerCase() || 'prepare',
+        }),
       })
 
       if (!updateRes.ok) throw new Error('Failed to save profile data.')
@@ -681,7 +696,7 @@ function App() {
       const response = await fetch(`${API_BASE_URL}/api/applications/${currentAppId}/send-email-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: form.email })
+        body: JSON.stringify({ email: form.email }),
       })
 
       if (!response.ok) throw new Error('Failed to send email.')
@@ -705,7 +720,7 @@ function App() {
       const res = await fetch(`${API_BASE_URL}/api/applications/${currentAppId}/verify-email-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: form.emailOtp })
+        body: JSON.stringify({ code: form.emailOtp }),
       })
 
       const data = await res.json()
@@ -732,7 +747,7 @@ function App() {
       const res = await fetch(`${API_BASE_URL}/api/applications/${currentAppId}/send-mobile-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mobile: form.mobile })
+        body: JSON.stringify({ mobile: form.mobile }),
       })
 
       const data = await res.json()
@@ -757,7 +772,7 @@ function App() {
       const res = await fetch(`${API_BASE_URL}/api/applications/${currentAppId}/verify-mobile-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: form.smsOtp })
+        body: JSON.stringify({ code: form.smsOtp }),
       })
 
       const data = await res.json()
@@ -770,21 +785,65 @@ function App() {
       setErrors((current) => ({ ...current, smsOtp: error.message || 'Invalid code.' }))
     }
   }
+
+  const handleOpenCrm = () => {
+    if (currentOfficer?.authenticated) {
+      setViewMode('crm')
+    } else {
+      setIsLoginModalOpen(true)
+    }
+  }
+
+  const handleLoginSuccess = (staffMember) => {
+    setCurrentOfficer(staffMember)
+    setViewMode('crm')
+  }
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('nbe_staff_auth')
+    setCurrentOfficer(null)
+    setViewMode('form')
+    showToast('Logged out of Staff CRM.')
+  }
+
   if (viewMode === 'crm') {
-    return <CrmDashboard onBackToForm={() => setViewMode('form')} />
+    return (
+      <CrmDashboard
+        onBackToForm={() => setViewMode('form')}
+        onLogout={handleLogout}
+        currentOfficer={currentOfficer}
+      />
+    )
+  }
+  if (showReceipt) {
+    return (
+      <SummaryReceipt
+        form={form}
+        referenceNumber={referenceNumber}
+        language={language}
+        onBack={() => setShowReceipt(false)}
+      />
+    )
   }
 
   return (
     <div className={`app-shell ${language === 'ar' ? 'rtl' : ''}`}>
-      <a className="skip-link" href="#main-content">{t.skipToApplication}</a>
+      <a className="skip-link" href="#main-content">
+        {t.skipToApplication}
+      </a>
       <Header
         onSave={() => handleSave()}
         mobileNavOpen={mobileNavOpen}
         setMobileNavOpen={setMobileNavOpen}
         language={language}
         toggleLanguage={toggleLanguage}
-        onOpenCrm={() => setViewMode('crm')}
+        onOpenCrm={handleOpenCrm}
         t={t}
+      />
+      <StaffLoginModal
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
+        onLoginSuccess={handleLoginSuccess}
       />
 
       <div className="progress-strip" aria-hidden="true">
@@ -795,8 +854,12 @@ function App() {
         <JourneyNav step={step} onStepSelect={setStep} submitted={submitted} t={t} />
 
         <section className="content-panel" aria-labelledby="page-title">
-          <div className="step-kicker">{t.step} {step + 1} {t.of} {t.steps.length}</div>
-          <h1 id="page-title" tabIndex="-1" ref={headingRef}>{t.steps[step].title}</h1>
+          <div className="step-kicker">
+            {t.step} {step + 1} {t.of} {t?.steps?.length || 6}
+          </div>
+          <h1 id="page-title" tabIndex="-1" ref={headingRef}>
+            {t.steps[step]?.title || ''}
+          </h1>
 
           {step === 0 && (
             <PrepareStep form={form} errors={errors} onToggle={updateEligibility} t={t} />
@@ -821,8 +884,14 @@ function App() {
               emailVerified={emailVerified}
               verifyMobile={handleVerifyMobileOtp}
               verifyEmail={handleVerifyEmailOtp}
-              resetMobile={() => { setMobileVerified(false); setMobileOtpSent(false); }}
-              resetEmail={() => { setEmailVerified(false); setEmailOtpSent(false); }}
+              resetMobile={() => {
+                setMobileVerified(false)
+                setMobileOtpSent(false)
+              }}
+              resetEmail={() => {
+                setEmailVerified(false)
+                setEmailOtpSent(false)
+              }}
               showToast={showToast}
               mobileOtpSent={mobileOtpSent}
               onSendMobileOtp={handleSendMobileOtp}
@@ -838,20 +907,35 @@ function App() {
             <ReviewStep form={form} errors={errors} update={update} goTo={setStep} t={t} />
           )}
           {step === 5 && (
-            <SuccessStep form={form} referenceNumber={referenceNumber} restart={restart} t={t} />
+            <SuccessStep
+              form={form}
+              referenceNumber={referenceNumber}
+              restart={restart}
+              onDownloadSummary={() => setShowReceipt(true)}
+              t={t}
+            />
           )}
 
           {step < 5 && (
             <div className="form-actions">
               {step > 0 ? (
                 <button className="button button-secondary" type="button" onClick={back}>
-                  {language === 'ar' ? <ArrowRight size={18} aria-hidden="true" /> : <ArrowLeft size={18} aria-hidden="true" />} {t.back}
+                  {language === 'ar' ? (
+                    <ArrowRight size={18} aria-hidden="true" />
+                  ) : (
+                    <ArrowLeft size={18} aria-hidden="true" />
+                  )}{' '}
+                  {t.back}
                 </button>
               ) : (
                 <span />
               )}
               <button className="button button-primary" type="button" onClick={next}>
-                {language === 'ar' ? <ArrowLeft size={18} aria-hidden="true" /> : <ArrowRight size={18} aria-hidden="true" />}
+                {language === 'ar' ? (
+                  <ArrowLeft size={18} aria-hidden="true" />
+                ) : (
+                  <ArrowRight size={18} aria-hidden="true" />
+                )}
                 {t.nextLabels[step]}
               </button>
             </div>
@@ -870,7 +954,7 @@ function App() {
   )
 }
 
-function Header({ onSave, mobileNavOpen, setMobileNavOpen, language, toggleLanguage,onOpenCrm, t }) {
+function Header({ onSave, mobileNavOpen, setMobileNavOpen, language, toggleLanguage, onOpenCrm, t }) {
   return (
     <header className="site-header">
       <div className="header-inner">
@@ -886,14 +970,23 @@ function Header({ onSave, mobileNavOpen, setMobileNavOpen, language, toggleLangu
           >
             <Building2 size={18} /> Staff CRM
           </button>
-          <button type="button" className={`lang-toggle ${language === 'ar' ? 'is-ar' : 'is-en'}`} onClick={toggleLanguage} aria-label={t.languageLabel}>
+          <button
+            type="button"
+            className={`lang-toggle ${language === 'ar' ? 'is-ar' : 'is-en'}`}
+            onClick={toggleLanguage}
+            aria-label={t.languageLabel}
+          >
             <span className="lang-toggle-track">
               <span className="lang-toggle-label en">EN</span>
               <span className="lang-toggle-label ar">AR</span>
               <span className="lang-toggle-thumb" aria-hidden="true" />
             </span>
           </button>
-          <button type="button" className="header-link" onClick={() => alert('Call NBE support at 19623 for assistance.')}>
+          <button
+            type="button"
+            className="header-link"
+            onClick={() => alert('Call NBE support at 19623 for assistance.')}
+          >
             <CircleHelp size={18} aria-hidden="true" /> {t.help}
           </button>
           <button type="button" className="save-button" onClick={onSave}>
@@ -964,7 +1057,9 @@ function PrepareStep({ form, errors, onToggle, t }) {
                 checked={form.eligibility[name]}
                 onChange={() => onToggle(name)}
               />
-              <span className="custom-check"><Check size={15} /></span>
+              <span className="custom-check">
+                <Check size={15} />
+              </span>
               <span>{label}</span>
             </label>
           ))}
@@ -976,10 +1071,18 @@ function PrepareStep({ form, errors, onToggle, t }) {
       <h2>{t.prepare.laterTitle}</h2>
       <div className="document-preview">
         {t.prepare.docs.map((doc) => (
-          <div key={doc.title}><FileText size={21} /><span><strong>{doc.title}</strong><small>{doc.hint}</small></span></div>
+          <div key={doc.title}>
+            <FileText size={21} />
+            <span>
+              <strong>{doc.title}</strong>
+              <small>{doc.hint}</small>
+            </span>
+          </div>
         ))}
       </div>
-      <button type="button" className="text-button"><Info size={17} /> {t.prepare.branchLink}</button>
+      <button type="button" className="text-button">
+        <Info size={17} /> {t.prepare.branchLink}
+      </button>
     </div>
   )
 }
@@ -1097,7 +1200,9 @@ function IdentityStep({ form, errors, update, ocrResult, onOcrResult, t }) {
       </div>
 
       <div className="upload-card">
-        <div className="upload-illustration"><UserRound size={26} /></div>
+        <div className="upload-illustration">
+          <UserRound size={26} />
+        </div>
         <div className="upload-copy">
           <span className="optional-tag">{t.identity.scanRecommended}</span>
           <h2>{t.identity.scanTitle}</h2>
@@ -1124,25 +1229,27 @@ function IdentityStep({ form, errors, update, ocrResult, onOcrResult, t }) {
   )
 }
 
-function ContactStep({ 
-  form, 
+function ContactStep({
+  form,
   applicationId,
-  errors, 
-  update, 
-  mobileVerified, 
-  emailVerified, 
-  verifyMobile, 
-  verifyEmail, 
-  resetMobile, 
-  resetEmail, 
+  errors,
+  update,
+  mobileVerified,
+  emailVerified,
+  verifyMobile,
+  verifyEmail,
+  resetMobile,
+  resetEmail,
   showToast,
   mobileOtpSent,
   onSendMobileOtp,
-  emailOtpSent,        
+  emailOtpSent,
   onSendEmailOtp,
-  t
+  t,
 }) {
-  const maskedMobile = form.mobile ? `${form.mobile.slice(0, 3)} •••• ${form.mobile.slice(-4)}` : '01• •••• ••••'
+  const maskedMobile = form.mobile
+    ? `${form.mobile.slice(0, 3)} •••• ${form.mobile.slice(-4)}`
+    : '01• •••• ••••'
 
   return (
     <div className="step-body">
@@ -1163,7 +1270,10 @@ function ContactStep({
               label={t.contact.mobile}
               name="mobile"
               value={form.mobile}
-              onChange={(value) => { update('mobile', value); resetMobile() }}
+              onChange={(value) => {
+                update('mobile', value)
+                resetMobile()
+              }}
               error={errors.mobile}
               autoComplete="tel"
               inputMode="tel"
@@ -1171,7 +1281,7 @@ function ContactStep({
               disabled={mobileVerified}
             />
           </div>
-          
+
           {!mobileVerified && !mobileOtpSent && (
             <a
               href={`https://t.me/nbe_onboarding_otp_bot?start=${applicationId || 'demo_app'}`}
@@ -1206,7 +1316,9 @@ function ContactStep({
               verifyLabel={t.contact.verifyButton || 'Verify'}
             />
             <div className="resend-row">
-              <span>{t.contact.expiresIn} <strong>05:00</strong></span>
+              <span>
+                {t.contact.expiresIn} <strong>05:00</strong>
+              </span>
               <a
                 href={`https://t.me/nbe_onboarding_otp_bot?start=${applicationId || 'demo_app'}`}
                 target="_blank"
@@ -1235,7 +1347,10 @@ function ContactStep({
               label={t.contact.email}
               name="email"
               value={form.email}
-              onChange={(value) => { update('email', value); resetEmail() }}
+              onChange={(value) => {
+                update('email', value)
+                resetEmail()
+              }}
               error={errors.email}
               autoComplete="email"
               inputMode="email"
@@ -1243,7 +1358,7 @@ function ContactStep({
               disabled={emailVerified}
             />
           </div>
-          
+
           {!emailVerified && !emailOtpSent && (
             <button
               type="button"
@@ -1268,8 +1383,12 @@ function ContactStep({
               verifyLabel={t.contact.verifyButton || 'Verify'}
             />
             <div className="resend-row">
-              <span>{t.contact.expiresIn} <strong>05:00</strong></span>
-              <button type="button" onClick={onSendEmailOtp}>{t.contact.resendEmail}</button>
+              <span>
+                {t.contact.expiresIn} <strong>05:00</strong>
+              </span>
+              <button type="button" onClick={onSendEmailOtp}>
+                {t.contact.resendEmail}
+              </button>
             </div>
           </div>
         )}
@@ -1288,12 +1407,23 @@ function VerificationCard({ icon, title, destination, verified, onEdit, children
     <section className={`verification-card ${verified ? 'is-verified' : ''}`}>
       <div className="verification-heading">
         <div className="verification-icon">{icon}</div>
-        <div><h2>{title}</h2><p>{destination}</p></div>
-        {verified && <span className="verified-pill"><BadgeCheck size={17} /> {t.verified}</span>}
+        <div>
+          <h2>{title}</h2>
+          <p>{destination}</p>
+        </div>
+        {verified && (
+          <span className="verified-pill">
+            <BadgeCheck size={17} /> {t.verified}
+          </span>
+        )}
       </div>
       {verified ? (
-        <button className="text-button compact" type="button" onClick={onEdit}>{t.change} {title.toLowerCase()}</button>
-      ) : children}
+        <button className="text-button compact" type="button" onClick={onEdit}>
+          {t.change} {title.toLowerCase()}
+        </button>
+      ) : (
+        children
+      )}
     </section>
   )
 }
@@ -1341,25 +1471,67 @@ function ApplicationStep({ form, errors, update, t }) {
     <div className="step-body">
       <p className="lead">{t.application.lead}</p>
 
-      <div className="section-heading"><span>1</span><div><h2>{t.application.sectionTitle}</h2><p>{t.application.sectionDescription}</p></div></div>
+      <div className="section-heading">
+        <span>1</span>
+        <div>
+          <h2>{t.application.sectionTitle}</h2>
+          <p>{t.application.sectionDescription}</p>
+        </div>
+      </div>
       <div className="form-grid two-columns">
-        <SelectField label={t.fieldLabels.employment} name="employment" value={form.employment} onChange={(value) => update('employment', value)} error={errors.employment} options={['Employed', 'Self-employed', 'Retired', 'Student', 'Not currently employed']} placeholder={t.selectOption} />
-        <SelectField label={t.fieldLabels.income} name="income" value={form.income} onChange={(value) => update('income', value)} error={errors.income} options={['Less than EGP 10,000', 'EGP 10,000–25,000', 'EGP 25,001–50,000', 'More than EGP 50,000']} placeholder={t.selectOption} />
+        <SelectField
+          label={t.fieldLabels.employment}
+          name="employment"
+          value={form.employment}
+          onChange={(value) => update('employment', value)}
+          error={errors.employment}
+          options={['Employed', 'Self-employed', 'Retired', 'Student', 'Not currently employed']}
+          placeholder={t.selectOption}
+        />
+        <SelectField
+          label={t.fieldLabels.income}
+          name="income"
+          value={form.income}
+          onChange={(value) => update('income', value)}
+          error={errors.income}
+          options={[
+            'Less than EGP 10,000',
+            'EGP 10,000–25,000',
+            'EGP 25,001–50,000',
+            'More than EGP 50,000',
+          ]}
+          placeholder={t.selectOption}
+        />
       </div>
 
       {form.employment && (
         <div className="dynamic-checklist">
           <FileCheck2 size={22} />
-          <div><strong>{t.application.checklist}</strong><p>{form.employment === 'Employed' ? t.application.employed : form.employment === 'Self-employed' ? t.application.selfEmployed : t.application.other}</p></div>
+          <div>
+            <strong>{t.application.checklist}</strong>
+            <p>
+              {form.employment === 'Employed'
+                ? t.application.employed
+                : form.employment === 'Self-employed'
+                ? t.application.selfEmployed
+                : t.application.other}
+            </p>
+          </div>
         </div>
       )}
 
       <div className={`employment-upload ${form.incomeProofDocument ? 'has-file' : ''}`}>
-        <div className="upload-illustration"><FileCheck2 size={25} /></div>
+        <div className="upload-illustration">
+          <FileCheck2 size={25} />
+        </div>
         <div>
           <span className="optional-tag">{t.application.optional}</span>
           <h2>{t.application.uploadTitle}</h2>
-          <p>{form.incomeProofDocument ? `${form.incomeProofDocument.name} · ${formatFileSize(form.incomeProofDocument.size)}` : t.application.uploadDescription}</p>
+          <p>
+            {form.incomeProofDocument
+              ? `${form.incomeProofDocument.name} · ${formatFileSize(form.incomeProofDocument.size)}`
+              : t.application.uploadDescription}
+          </p>
         </div>
         <input
           ref={employmentDocumentRef}
@@ -1370,11 +1542,19 @@ function ApplicationStep({ form, errors, update, t }) {
         />
         <div className="employment-upload-actions">
           {form.incomeProofDocument && (
-            <button className="text-button compact" type="button" onClick={() => update('incomeProofDocument', null)}>
+            <button
+              className="text-button compact"
+              type="button"
+              onClick={() => update('incomeProofDocument', null)}
+            >
               {t.application.remove}
             </button>
           )}
-          <button className="button button-secondary" type="button" onClick={() => employmentDocumentRef.current?.click()}>
+          <button
+            className="button button-secondary"
+            type="button"
+            onClick={() => employmentDocumentRef.current?.click()}
+          >
             <Upload size={18} /> {form.incomeProofDocument ? t.application.replace : t.application.upload}
           </button>
         </div>
@@ -1385,9 +1565,21 @@ function ApplicationStep({ form, errors, update, t }) {
 
 function ReviewStep({ form, errors, update, goTo, t }) {
   const methods = [
-    { id: 'ebranch', icon: CalendarDays, title: t.review.methods.ebranch, text: t.review.methodText.ebranch, tag: t.review.tags.mostConvenient },
+    {
+      id: 'ebranch',
+      icon: CalendarDays,
+      title: t.review.methods.ebranch,
+      text: t.review.methodText.ebranch,
+      tag: t.review.tags.mostConvenient,
+    },
     { id: 'branch', icon: Building2, title: t.review.methods.branch, text: t.review.methodText.branch, tag: '' },
-    { id: 'employee', icon: HandHeart, title: t.review.methods.employee, text: t.review.methodText.employee, tag: t.review.tags.eligibilityApplies },
+    {
+      id: 'employee',
+      icon: HandHeart,
+      title: t.review.methods.employee,
+      text: t.review.methodText.employee,
+      tag: t.review.tags.eligibilityApplies,
+    },
   ]
 
   return (
@@ -1395,10 +1587,34 @@ function ReviewStep({ form, errors, update, goTo, t }) {
       <p className="lead">{t.review.lead}</p>
 
       <div className="review-card">
-        <ReviewRow title={t.review.identity} value={`National ID ending ${form.nationalId.slice(-4) || '—'} · ${form.dateOfBirth || 'Date of birth not entered'}`} onEdit={() => goTo(1)} t={t} />
-        <ReviewRow title={t.review.contact} value={`${form.email || 'Email not entered'} · ${t.verified}`} onEdit={() => goTo(2)} t={t} />
-        <ReviewRow title={t.review.identityDetails} value={`${form.fullName || 'Name not entered'} · ${form.governorate || 'Governorate not entered'}`} onEdit={() => goTo(1)} t={t} />
-        <ReviewRow title={t.review.employment} value={`${form.employment} · ${form.income} · ${form.incomeProofDocument?.name || 'No HR letter uploaded yet'}`} onEdit={() => goTo(3)} t={t} />
+        <ReviewRow
+          title={t.review.identity}
+          value={`National ID ending ${form.nationalId.slice(-4) || '—'} · ${
+            form.dateOfBirth || 'Date of birth not entered'
+          }`}
+          onEdit={() => goTo(1)}
+          t={t}
+        />
+        <ReviewRow
+          title={t.review.contact}
+          value={`${form.email || 'Email not entered'} · ${t.verified}`}
+          onEdit={() => goTo(2)}
+          t={t}
+        />
+        <ReviewRow
+          title={t.review.identityDetails}
+          value={`${form.fullName || 'Name not entered'} · ${form.governorate || 'Governorate not entered'}`}
+          onEdit={() => goTo(1)}
+          t={t}
+        />
+        <ReviewRow
+          title={t.review.employment}
+          value={`${form.employment || 'Employment not selected'} · ${form.income || 'Income not selected'} · ${
+            form.incomeProofDocument?.name || 'No HR letter uploaded yet'
+          }`}
+          onEdit={() => goTo(3)}
+          t={t}
+        />
       </div>
 
       <div className="section-divider" />
@@ -1407,13 +1623,21 @@ function ReviewStep({ form, errors, update, goTo, t }) {
       <div className={`method-grid ${errors.method ? 'has-error' : ''}`}>
         {methods.map(({ id, icon: Icon, title, text, tag }) => (
           <label className={`method-card ${form.method === id ? 'selected' : ''}`} key={id}>
-            <input type="radio" name="method" value={id} checked={form.method === id} onChange={() => update('method', id)} />
+            <input
+              type="radio"
+              name="method"
+              value={id}
+              checked={form.method === id}
+              onChange={() => update('method', id)}
+            />
             <span className="radio-mark" />
             <Icon size={25} />
             {tag && <span className="method-tag">{tag}</span>}
             <strong>{title}</strong>
             <p>{text}</p>
-            <span className="learn-more">{t.review.viewDetails} <ChevronRight size={15} /></span>
+            <span className="learn-more">
+              {t.review.viewDetails} <ChevronRight size={15} />
+            </span>
           </label>
         ))}
       </div>
@@ -1421,14 +1645,23 @@ function ReviewStep({ form, errors, update, goTo, t }) {
 
       <div className="terms-box">
         <label className="terms-check">
-          <input type="checkbox" checked={form.terms} onChange={(event) => update('terms', event.target.checked)} />
-          <span className="custom-check"><Check size={15} /></span>
+          <input
+            type="checkbox"
+            checked={form.terms}
+            onChange={(event) => update('terms', event.target.checked)}
+          />
+          <span className="custom-check">
+            <Check size={15} />
+          </span>
           <span>{t.review.legalText}</span>
         </label>
         {errors.terms && <FieldError message={errors.terms} />}
       </div>
 
-      <div className="security-banner"><LockKeyhole size={20} /><span>{t.review.securityNote}</span></div>
+      <div className="security-banner">
+        <LockKeyhole size={20} />
+        <span>{t.review.securityNote}</span>
+      </div>
     </div>
   )
 }
@@ -1436,8 +1669,13 @@ function ReviewStep({ form, errors, update, goTo, t }) {
 function ReviewRow({ title, value, onEdit, t }) {
   return (
     <div className="review-row">
-      <div><strong>{title}</strong><p>{value}</p></div>
-      <button type="button" onClick={onEdit}>{t.review.edit}</button>
+      <div>
+        <strong>{title}</strong>
+        <p>{value}</p>
+      </div>
+      <button type="button" onClick={onEdit}>
+        {t.review.edit}
+      </button>
     </div>
   )
 }
@@ -1448,48 +1686,93 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function SuccessStep({ form, referenceNumber, restart, t }) {
-  const methodNames = {
-    ebranch: t.success.method.ebranch,
-    branch: t.success.method.branch,
-    employee: t.success.method.employee,
-  }
+function SuccessStep({ form, referenceNumber, restart, onDownloadSummary, t }) {
+  const methodKey = form.method || 'branch'
+  const firstName = form.fullName?.trim().split(' ')[0] || t.success.requestReady
 
   return (
     <div className="step-body success-body">
-      <div className="success-mark"><Check size={34} /></div>
-      <p className="success-lead">{t.success.lead.replace('{name}', form.fullName?.split(' ')[0] || t.success.requestReady)}.</p>
-      <p>{t.success.confirmation} <strong>{form.email || 'your verified email'}</strong>.</p>
+      <div className="success-mark">
+        <Check size={34} />
+      </div>
+      <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#17382b', margin: '0 0 8px' }}>
+        {t.success.lead.replace('{name}', firstName)}.
+      </h2>
+      <p style={{ color: '#60706a', margin: '0 0 20px' }}>
+        {t.success.confirmation} <strong>{form.email || 'your verified email'}</strong>.
+      </p>
 
       <div className="reference-card">
         <span>{t.applicationReference}</span>
         <strong>{referenceNumber}</strong>
-        <button type="button" onClick={() => navigator.clipboard?.writeText(referenceNumber)}>{t.copy}</button>
+        <button type="button" onClick={() => navigator.clipboard?.writeText(referenceNumber)}>
+          {t.copy}
+        </button>
       </div>
 
       <div className="next-step-card">
-        <div className="next-step-icon"><CalendarDays size={25} /></div>
+        <div className="next-step-icon">
+          <CalendarDays size={25} />
+        </div>
         <div>
           <span className="eyebrow">{t.nextStep}</span>
-          <h2>{methodNames[form.method] || 'Complete your documents and signature'}</h2>
-          <p>{form.method === 'employee' ? t.success.methodText.employee : form.method === 'ebranch' ? t.success.methodText.ebranch : t.success.methodText.branch}</p>
-          <button className="button button-primary" type="button">{form.method === 'ebranch' ? t.success.action.ebranch : form.method === 'employee' ? t.success.action.employee : t.success.action.branch} <ArrowRight size={18} /></button>
+          <h2>{t.success.method[methodKey] || t.success.method.branch}</h2>
+          <p>{t.success.methodText[methodKey] || t.success.methodText.branch}</p>
+          <button className="button button-primary" type="button">
+            {t.success.action[methodKey] || t.success.action.branch} <ArrowRight size={18} />
+          </button>
         </div>
       </div>
 
       <div className="status-section">
-        <div className="status-heading"><div><span className="eyebrow">{t.appStatus}</span><h2>{t.success.statusTitle}</h2></div><span className="status-pill">{t.success.statusPill}</span></div>
+        <div className="status-heading">
+          <div>
+            <span className="eyebrow">{t.appStatus}</span>
+            <h2>{t.success.statusTitle}</h2>
+          </div>
+          <span className="status-pill">{t.success.statusPill}</span>
+        </div>
         <ol className="status-timeline">
-          <li className="done"><span><Check size={14} /></span><div><strong>{t.success.timeline.submitted}</strong><small>{t.success.timeline.today}</small></div></li>
-          <li className="active"><span>2</span><div><strong>{t.success.timeline.signature}</strong><small>{t.success.timeline.nextAction}</small></div></li>
-          <li><span>3</span><div><strong>{t.success.timeline.review}</strong><small>{t.success.timeline.update}</small></div></li>
-          <li><span>4</span><div><strong>{t.success.timeline.accountReady}</strong><small>{t.success.timeline.final}</small></div></li>
+          <li className="done">
+            <span>
+              <Check size={14} />
+            </span>
+            <div>
+              <strong>{t.success.timeline.submitted}</strong>
+              <small>{t.success.timeline.today}</small>
+            </div>
+          </li>
+          <li className="active">
+            <span>2</span>
+            <div>
+              <strong>{t.success.timeline.signature}</strong>
+              <small>{t.success.timeline.nextAction}</small>
+            </div>
+          </li>
+          <li>
+            <span>3</span>
+            <div>
+              <strong>{t.success.timeline.review}</strong>
+              <small>{t.success.timeline.update}</small>
+            </div>
+          </li>
+          <li>
+            <span>4</span>
+            <div>
+              <strong>{t.success.timeline.accountReady}</strong>
+              <small>{t.success.timeline.final}</small>
+            </div>
+          </li>
         </ol>
       </div>
 
       <div className="success-actions">
-        <button className="button button-secondary" type="button">{t.success.downloadSummary}</button>
-        <button className="text-button" type="button" onClick={restart}>{t.success.restart}</button>
+        <button className="button button-secondary" type="button" onClick={onDownloadSummary}>
+          <FileText size={17} /> {t.success.downloadSummary}
+        </button>
+        <button className="text-button" type="button" onClick={restart}>
+          {t.success.restart}
+        </button>
       </div>
     </div>
   )
@@ -1504,7 +1787,9 @@ function Field({ label, name, value, onChange, error, hint, isLoading, isComplet
         id={name}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={`${error ? 'input-error' : ''} ${filled ? 'is-filled' : ''} ${isLoading ? 'is-shimmering' : ''}`.trim()}
+        className={`${error ? 'input-error' : ''} ${filled ? 'is-filled' : ''} ${
+          isLoading ? 'is-shimmering' : ''
+        }`.trim()}
         aria-invalid={Boolean(error)}
         aria-describedby={error ? `${name}-error` : hint ? `${name}-hint` : undefined}
         {...props}
@@ -1519,9 +1804,22 @@ function SelectField({ label, name, value, onChange, error, options, isLoading, 
   return (
     <div className={`field ${isLoading ? 'is-loading' : ''}`} aria-busy={isLoading || undefined}>
       <label htmlFor={name}>{label}</label>
-      <select id={name} value={value} onChange={(event) => onChange(event.target.value)} className={`${error ? 'input-error' : ''} ${value ? 'is-filled' : ''} ${isLoading ? 'is-shimmering' : ''}`.trim()} aria-invalid={Boolean(error)} aria-describedby={error ? `${name}-error` : undefined}>
+      <select
+        id={name}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className={`${error ? 'input-error' : ''} ${value ? 'is-filled' : ''} ${
+          isLoading ? 'is-shimmering' : ''
+        }`.trim()}
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? `${name}-error` : undefined}
+      >
         <option value="">{placeholder || 'Select an option'}</option>
-        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
       </select>
       {error && <FieldError id={`${name}-error`} message={error} />}
     </div>
@@ -1529,17 +1827,30 @@ function SelectField({ label, name, value, onChange, error, options, isLoading, 
 }
 
 function FieldError({ id, message }) {
-  return <span id={id} className="field-error"><Info size={15} aria-hidden="true" /> {message}</span>
+  return (
+    <span id={id} className="field-error">
+      <Info size={15} aria-hidden="true" /> {message}
+    </span>
+  )
 }
 
 function Footer({ t }) {
   return (
     <footer className="site-footer">
-      <div><Landmark size={19} /><span>National Bank of Egypt</span></div>
-      <nav aria-label="Legal"><a href="#privacy">{t.footer.legal}</a><a href="#security">{t.footer.security}</a><a href="#accessibility">{t.footer.accessibility}</a><a href="tel:19623"><Phone size={14} /> 19623</a></nav>
+      <div>
+        <Landmark size={19} />
+        <span>National Bank of Egypt</span>
+      </div>
+      <nav aria-label="Legal">
+        <a href="#privacy">{t.footer.legal}</a>
+        <a href="#security">{t.footer.security}</a>
+        <a href="#accessibility">{t.footer.accessibility}</a>
+        <a href="tel:19623">
+          <Phone size={14} /> 19623
+        </a>
+      </nav>
     </footer>
   )
-  
 }
 
 export default App

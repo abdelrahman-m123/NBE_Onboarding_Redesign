@@ -1,21 +1,16 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
+  Building2,
+  RefreshCw,
+  X,
+  ShieldCheck,
   CheckCircle2,
   XCircle,
-  Clock,
-  Search,
-  Building2,
-  ShieldCheck,
-  CalendarDays,
-  FileText,
-  RefreshCw,
-  Eye,
-  X,
 } from 'lucide-react'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'
 
-export function CrmDashboard({ onBackToForm }) {
+export function CrmDashboard({ onBackToForm = () => {}, onLogout = () => {}, currentOfficer = null }) {
   const [applications, setApplications] = useState([])
   const [statusFilter, setStatusFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
@@ -24,16 +19,26 @@ export function CrmDashboard({ onBackToForm }) {
   const [loading, setLoading] = useState(false)
   const [modalLoading, setModalLoading] = useState(false)
 
+  // Safe fallback to prevent ReferenceError / TypeError
+  const officerName = currentOfficer?.name || 'Staff Officer'
+
   const fetchApplications = async () => {
     setLoading(true)
     try {
       const res = await fetch(
-        `${API_BASE_URL}/api/crm/applications?status=${statusFilter}&search=${encodeURIComponent(searchQuery)}`
+        `${API_BASE_URL}/api/crm/applications?status=${statusFilter}&search=${encodeURIComponent(
+          searchQuery
+        )}`
       )
       const json = await res.json()
-      if (json.success) setApplications(json.data || [])
+      if (json && json.success) {
+        setApplications(json.data || [])
+      } else {
+        setApplications([])
+      }
     } catch (err) {
-      console.error('Failed to load CRM applications', err)
+      console.error('Failed to load CRM applications:', err)
+      setApplications([])
     } finally {
       setLoading(false)
     }
@@ -49,9 +54,9 @@ export function CrmDashboard({ onBackToForm }) {
     try {
       const res = await fetch(`${API_BASE_URL}/api/crm/applications/${id}`)
       const json = await res.json()
-      if (json.success) setSelectedDetails(json)
+      if (json && json.success) setSelectedDetails(json)
     } catch (err) {
-      console.error('Failed to load application details', err)
+      console.error('Failed to load application details:', err)
     } finally {
       setModalLoading(false)
     }
@@ -64,8 +69,8 @@ export function CrmDashboard({ onBackToForm }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status: newStatus,
-          officerName: 'Senior_Branch_Manager',
-          notes: `Marked as ${newStatus.toUpperCase()} via Operations CRM Console.`,
+          officerName: officerName,
+          notes: `Status changed to ${newStatus.toUpperCase()} by ${officerName}.`,
           rejectionReason: reason,
         }),
       })
@@ -74,7 +79,7 @@ export function CrmDashboard({ onBackToForm }) {
         if (selectedAppId === id) openAppDetails(id)
       }
     } catch (err) {
-      console.error('Failed to update status', err)
+      console.error('Failed to update status:', err)
     }
   }
 
@@ -88,15 +93,30 @@ export function CrmDashboard({ onBackToForm }) {
             <h1 style={{ fontSize: '26px', color: '#10281f', margin: 0 }}>NBE Operations & Case CRM</h1>
           </div>
           <p style={{ margin: '4px 0 0', color: '#60706a', fontSize: '14px' }}>
-            Retail Banking Customer Onboarding & KYC Back-Office Management
+            Logged in as: <strong style={{ color: '#006643' }}>{officerName}</strong>
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <button className="button button-secondary" onClick={fetchApplications} title="Refresh records">
             <RefreshCw size={16} /> Refresh
           </button>
-          <button className="button button-primary" onClick={onBackToForm}>
+          <button className="button button-secondary" onClick={onBackToForm}>
             Applicant Portal
+          </button>
+          <button
+            onClick={onLogout}
+            style={{
+              backgroundColor: '#fee2e2',
+              color: '#991b1b',
+              border: '1px solid #fca5a5',
+              padding: '8px 14px',
+              borderRadius: '6px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              fontSize: '13px',
+            }}
+          >
+            Log Out
           </button>
         </div>
       </div>
@@ -113,7 +133,7 @@ export function CrmDashboard({ onBackToForm }) {
           border: '1px solid #dce4e0',
         }}
       >
-        <div style={{ flex: 1, position: 'relative' }}>
+        <div style={{ flex: 1 }}>
           <input
             type="text"
             placeholder="Search by Reference ID (e.g. NBE-26-...) or Applicant Name..."
@@ -126,6 +146,7 @@ export function CrmDashboard({ onBackToForm }) {
               borderRadius: '6px',
               border: '1px solid #b9c8c2',
               fontSize: '14px',
+              boxSizing: 'border-box',
             }}
           />
         </div>
@@ -163,7 +184,15 @@ export function CrmDashboard({ onBackToForm }) {
         }}
       >
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-          <thead style={{ background: '#f4f7f6', borderBottom: '1px solid #dce4e0', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <thead
+            style={{
+              background: '#f4f7f6',
+              borderBottom: '1px solid #dce4e0',
+              fontSize: '12px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+            }}
+          >
             <tr>
               <th style={{ padding: '14px 18px' }}>Reference</th>
               <th style={{ padding: '14px 18px' }}>Applicant</th>
@@ -178,10 +207,10 @@ export function CrmDashboard({ onBackToForm }) {
             {applications.map((app) => (
               <tr key={app.id} style={{ borderBottom: '1px solid #eef3f1' }}>
                 <td style={{ padding: '14px 18px', fontWeight: 'bold', color: '#006643' }}>
-                  {app.reference_number}
+                  {app.reference_number || 'NBE-PENDING'}
                 </td>
                 <td style={{ padding: '14px 18px' }}>
-                  <strong>{app.full_name || 'Anonymous Draft'}</strong>
+                  <strong>{app.full_name || 'Anonymous Applicant'}</strong>
                   <div style={{ color: '#60706a', fontSize: '11px' }}>Step: {app.current_step}</div>
                 </td>
                 <td style={{ padding: '14px 18px' }}>
@@ -218,7 +247,7 @@ export function CrmDashboard({ onBackToForm }) {
                           : '#854d0e',
                     }}
                   >
-                    {app.status?.toUpperCase()}
+                    {(app.status || 'draft').toUpperCase()}
                   </span>
                 </td>
                 <td style={{ padding: '14px 18px', textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -279,7 +308,7 @@ export function CrmDashboard({ onBackToForm }) {
         )}
       </div>
 
-      {/* Details & Audit Trail Inspection Modal */}
+      {/* Details Modal */}
       {selectedAppId && (
         <div
           style={{
@@ -308,7 +337,10 @@ export function CrmDashboard({ onBackToForm }) {
                 Dossier: {selectedDetails?.application?.reference_number || 'Loading...'}
               </h2>
               <button
-                onClick={() => { setSelectedAppId(null); setSelectedDetails(null); }}
+                onClick={() => {
+                  setSelectedAppId(null)
+                  setSelectedDetails(null)
+                }}
                 style={{ background: 'none', border: 'none', cursor: 'pointer' }}
               >
                 <X size={22} />
@@ -318,22 +350,52 @@ export function CrmDashboard({ onBackToForm }) {
             {modalLoading ? (
               <p>Loading application dossier...</p>
             ) : (
-              selectedDetails && (
+              selectedDetails && selectedDetails.application && (
                 <div>
-                  {/* Summary Profile Grid */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '24px', background: '#f8faf9', padding: '16px', borderRadius: '8px' }}>
-                    <div><strong>Name:</strong> {selectedDetails.application.first_name} {selectedDetails.application.last_name}</div>
-                    <div><strong>National ID:</strong> {selectedDetails.application.national_id_hash || '—'}</div>
-                    <div><strong>DOB:</strong> {selectedDetails.application.date_of_birth ? selectedDetails.application.date_of_birth.split('T')[0] : '—'}</div>
-                    <div><strong>Governorate:</strong> {selectedDetails.application.governorate || '—'}</div>
-                    <div><strong>Mobile:</strong> {selectedDetails.application.mobile_hash || '—'}</div>
-                    <div><strong>Email:</strong> {selectedDetails.application.email_hash || '—'}</div>
-                    <div><strong>Employment:</strong> {selectedDetails.application.employment_status || '—'}</div>
-                    <div><strong>Monthly Income:</strong> {selectedDetails.application.income_range || '—'}</div>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '14px',
+                      marginBottom: '24px',
+                      background: '#f8faf9',
+                      padding: '16px',
+                      borderRadius: '8px',
+                    }}
+                  >
+                    <div>
+                      <strong>Name:</strong> {selectedDetails.application.first_name || ''}{' '}
+                      {selectedDetails.application.last_name || '—'}
+                    </div>
+                    <div>
+                      <strong>National ID:</strong> {selectedDetails.application.national_id_hash || '—'}
+                    </div>
+                    <div>
+                      <strong>DOB:</strong>{' '}
+                      {selectedDetails.application.date_of_birth
+                        ? selectedDetails.application.date_of_birth.split('T')[0]
+                        : '—'}
+                    </div>
+                    <div>
+                      <strong>Governorate:</strong> {selectedDetails.application.governorate || '—'}
+                    </div>
+                    <div>
+                      <strong>Mobile:</strong> {selectedDetails.application.mobile_hash || '—'}
+                    </div>
+                    <div>
+                      <strong>Email:</strong> {selectedDetails.application.email_hash || '—'}
+                    </div>
+                    <div>
+                      <strong>Employment:</strong> {selectedDetails.application.employment_status || '—'}
+                    </div>
+                    <div>
+                      <strong>Monthly Income:</strong> {selectedDetails.application.income_range || '—'}
+                    </div>
                   </div>
 
-                  {/* Audit Trail Timeline */}
-                  <h3 style={{ fontSize: '16px', color: '#006643', marginBottom: '12px' }}>Compliance Audit Trail</h3>
+                  <h3 style={{ fontSize: '16px', color: '#006643', marginBottom: '12px' }}>
+                    Compliance Audit Trail
+                  </h3>
                   <div style={{ borderLeft: '2px solid #006643', paddingLeft: '16px', margin: '12px 0 24px' }}>
                     {selectedDetails.auditTrail?.map((log) => (
                       <div key={log.id} style={{ marginBottom: '12px' }}>
@@ -341,10 +403,15 @@ export function CrmDashboard({ onBackToForm }) {
                           {log.action} <small style={{ color: '#60706a' }}>by {log.performed_by}</small>
                         </div>
                         <div style={{ color: '#60706a', fontSize: '12px' }}>
-                          Status changed: <em>{log.previous_status || 'initial'}</em> $\rightarrow$ <strong>{log.new_status}</strong>
+                          Status: <em>{log.previous_status || 'initial'}</em> &rarr;{' '}
+                          <strong>{log.new_status}</strong>
                         </div>
-                        {log.notes && <div style={{ fontSize: '12px', color: '#17211d' }}>Note: {log.notes}</div>}
-                        <small style={{ color: '#889892', fontSize: '10px' }}>{new Date(log.created_at).toLocaleString()}</small>
+                        {log.notes && (
+                          <div style={{ fontSize: '12px', color: '#17211d' }}>Note: {log.notes}</div>
+                        )}
+                        <small style={{ color: '#889892', fontSize: '10px' }}>
+                          {new Date(log.created_at).toLocaleString()}
+                        </small>
                       </div>
                     ))}
                     {(!selectedDetails.auditTrail || selectedDetails.auditTrail.length === 0) && (
@@ -352,7 +419,6 @@ export function CrmDashboard({ onBackToForm }) {
                     )}
                   </div>
 
-                  {/* Action Buttons inside Modal */}
                   <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                     <button
                       className="button button-primary"
@@ -361,8 +427,18 @@ export function CrmDashboard({ onBackToForm }) {
                       Approve Application
                     </button>
                     <button
-                      style={{ background: '#b42318', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '8px', fontWeight: '700', cursor: 'pointer' }}
-                      onClick={() => handleStatusChange(selectedDetails.application.id, 'rejected', 'Verification mismatch')}
+                      style={{
+                        background: '#b42318',
+                        color: 'white',
+                        border: 'none',
+                        padding: '10px 18px',
+                        borderRadius: '8px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                      }}
+                      onClick={() =>
+                        handleStatusChange(selectedDetails.application.id, 'rejected', 'Verification mismatch')
+                      }
                     >
                       Reject Application
                     </button>

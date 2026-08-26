@@ -21,17 +21,17 @@ Use this as the living checklist for the redesign prototype. When a gap is compl
 - [ ] Add real identity verification or e-KYC flow, if approved by NBE compliance and CBE requirements.
 - [x] Add National ID authenticity checks, expiry checks, and compliance-approved customer review records before prefill.
 - [ ] Add selfie/liveness or risk-based step-up checks, if legally and operationally approved.
-- [ ] Add manual-review routing for uncertain identity, document, fraud, or verification outcomes.
+- [x] Add manual-review routing for uncertain identity, document, fraud, or verification outcomes.
 - [ ] Add fraud controls such as rate limiting, abnormal velocity checks, device/network signals, and SIM-swap checks where permitted.
 - [ ] Ensure NIDs, full contact details, OTPs, documents, and biometrics are excluded from URLs, analytics, notifications, and general logs.
-- [ ] Add privacy controls for retention, audit logs, telemetry filtering, masking, and data minimization.
+- [x] Add privacy controls for retention, audit logs, telemetry filtering, masking, and data minimization.
 
 ## Application Form And Documents
 
 - [x] Expand the form to cover all required personal, address, employment, income, tax, regulatory, and account-preference fields.
 - [ ] Add conditional document checklist logic based on address mismatch, profession mismatch, income proof, birthplace, US nationality, and foreign residency.
 - [ ] Add document upload or digital document capture only if supported by NBE compliance and operations.
-- [ ] Preserve valid field data after errors and failed submission attempts.
+- [x] Preserve valid field data after errors and failed submission attempts.
 - [ ] Add full error and recovery states for service unavailable, session timeout, duplicate application, failed submission, expired codes, and lost connection.
 
 ## Signature And Completion Options
@@ -51,7 +51,7 @@ Use this as the living checklist for the redesign prototype. When a gap is compl
 - [ ] Build secure post-submission tracking with renewed verification before exposing or changing application data.
 - [ ] Add notification history and next-action management.
 - [ ] Ensure confirmation emails contain no sensitive personal information.
-- [ ] Add downloadable application summary with safe masking.
+- [x] Add downloadable application summary with safe masking.
 
 ## Accessibility And Usability
 
