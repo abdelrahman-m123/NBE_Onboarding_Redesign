@@ -58,7 +58,7 @@ app.get('/api/db/health', async (_request, response) => {
 app.get('/api/applications/:referenceNumber', async (request, response) => {
   const { referenceNumber } = request.params
   const result = await query(
-    `select reference_number, status, current_step, submission_method, submitted_at, created_at, updated_at
+    `select reference_number, status, current_step, submission_method, selected_branch, appointment_date, appointment_slot, submitted_at, created_at, updated_at
      from public.applications
      where reference_number = $1`,
     [referenceNumber],
@@ -115,7 +115,10 @@ app.put('/api/applications/:id/profile', validateOnboardingProfile, async (reque
     income,
     method,
     status,
-    currentStep 
+    currentStep,
+    selectedBranch,
+    appointmentDate,
+    appointmentSlot
   } = request.body
 
   try {
@@ -125,13 +128,24 @@ app.put('/api/applications/:id/profile', validateOnboardingProfile, async (reque
        SET current_step = COALESCE($1, current_step),
            submission_method = COALESCE($2, submission_method),
            status = COALESCE($3, status),
+           selected_branch = COALESCE($4, selected_branch),
+           appointment_date = COALESCE($5, appointment_date),
+           appointment_slot = COALESCE($6, appointment_slot),
            updated_at = NOW() 
-       WHERE id = $4`,
-      [currentStep || null, method || null, status || null, id]
+       WHERE id = $7`,
+      [
+        currentStep || null, 
+        method || null, 
+        status || null, 
+        selectedBranch || null, 
+        appointmentDate || null, 
+        appointmentSlot || null, 
+        id
+      ]
     )
 
     // 2. Update applicant profile details
-    const nameParts = fullName ? fullName.trim().split(' ') : []
+    const nameParts = fullName ? fullName.trim().split(/\s+/) : []
     const firstName = nameParts[0] || null
     const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null
     const dob = dateOfBirth ? dateOfBirth : null
@@ -167,10 +181,19 @@ app.put('/api/applications/:id/profile', validateOnboardingProfile, async (reque
       ]
     )
 
+    // 3. Log appointment booking to audit trail if set
+    if (selectedBranch && appointmentDate) {
+      await query(
+        `INSERT INTO public.crm_audit_trail (application_id, action, performed_by, notes)
+         VALUES ($1, 'APPOINTMENT_BOOKED', 'Applicant', $2)`,
+        [id, `Booked visit at ${selectedBranch} on ${appointmentDate} (${appointmentSlot || 'Standard Slot'}).`]
+      ).catch(() => {})
+    }
+
     logger.info('application.profile_saved', { requestId: request.requestId, applicationId: id })
     response.json({ message: 'Progress saved successfully.' })
   } catch (error) {
-    logger.error('application.profile_save_failed', { requestId: request.requestId, applicationId: id, error })
+    logger.error('application.profile_save_failed', { requestId: request.requestId, applicationId: id, error: error.message })
     response.status(500).json({ message: 'Failed to save application progress.' })
   }
 })
@@ -180,7 +203,9 @@ app.get('/api/applications/:id/profile', async (request, response) => {
 
   try {
     const result = await query(
-      `select a.current_step, p.national_id_hash, p.first_name, p.last_name, p.date_of_birth, p.governorate, p.address_line, p.mobile_hash, p.email_hash
+      `select a.current_step, a.status, a.submission_method, a.selected_branch, a.appointment_date, a.appointment_slot,
+              p.national_id_hash, p.first_name, p.last_name, p.date_of_birth, p.governorate, p.address_line, p.mobile_hash, p.email_hash,
+              p.employment_status, p.income_range
        from public.applications a
        left join public.applicant_profiles p on a.id = p.application_id
        where a.id = $1`,
@@ -193,16 +218,14 @@ app.get('/api/applications/:id/profile', async (request, response) => {
 
     response.json(result.rows[0])
   } catch (error) {
-    logger.error('application.profile_fetch_failed', { requestId: request.requestId, applicationId: id, error })
+    logger.error('application.profile_fetch_failed', { requestId: request.requestId, applicationId: id, error: error.message })
     response.status(500).json({ message: 'Failed to load application progress.' })
   }
 })
 
 // --- OTP & EMAIL ROUTES ---
-// --- In-Memory Email OTP Store ---
 const emailOtpStore = new Map()
 
-// --- OTP & EMAIL ROUTES ---
 app.post('/api/applications/:id/send-email-otp', async (request, response) => {
   const { id } = request.params
   const { email } = request.body
@@ -214,7 +237,6 @@ app.post('/api/applications/:id/send-email-otp', async (request, response) => {
   const otpCode = Math.floor(100000 + Math.random() * 900000).toString()
 
   try {
-    // Store OTP for verification with a 5-minute expiry
     emailOtpStore.set(id, {
       code: otpCode,
       email,
@@ -230,7 +252,6 @@ app.post('/api/applications/:id/send-email-otp', async (request, response) => {
   }
 })
 
-// --- EMAIL OTP VERIFICATION (The Missing Route) ---
 app.post('/api/applications/:id/verify-email-otp', async (request, response) => {
   const { id } = request.params
   const { code } = request.body
@@ -254,7 +275,6 @@ app.post('/api/applications/:id/verify-email-otp', async (request, response) => 
     return response.status(400).json({ message: 'Incorrect verification code.' })
   }
 
-  // Cleanup after successful verification
   emailOtpStore.delete(id)
   logger.info('application.email_verified', { applicationId: id, email: record.email })
   response.json({ success: true, message: 'Email address verified successfully.' })
@@ -277,7 +297,6 @@ app.post('/api/applications/:id/send-mobile-otp', async (request, response) => {
   }
 })
 
-// --- MOBILE OTP VERIFICATION ---
 app.post('/api/applications/:id/verify-mobile-otp', async (request, response) => {
   const { id } = request.params
   const { code } = request.body
@@ -295,7 +314,6 @@ app.post('/api/applications/:id/verify-mobile-otp', async (request, response) =>
   logger.info('application.mobile_verified', { applicationId: id, mobile: result.mobile })
   response.json({ success: true, message: 'Mobile number verified successfully.' })
 })
-
 
 // --- OCR ROUTE ---
 app.post('/api/identity/ocr', upload.single('nationalIdImage'), async (request, response) => {
