@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, useEffect } from 'react'
 import { StaffLoginModal } from './StaffLoginModal'
 import { CrmDashboard } from './CrmDashboard'
 import { SummaryReceipt } from './SummaryReceipt'
+import { BookingModal } from './BookingModal'
 import {
   ArrowLeft,
   ArrowRight,
@@ -63,6 +64,133 @@ const governorateOptions = [
   'Other',
 ]
 
+// Egyptian Civil Registry Governorate Codes
+const EGYPT_GOVERNORATE_CODES = {
+  '01': 'Cairo',
+  '02': 'Alexandria',
+  '03': 'Port Said',
+  '04': 'Suez',
+  '11': 'Damietta',
+  '12': 'Dakahlia',
+  '13': 'Sharqia',
+  '14': 'Qalyubia',
+  '15': 'Kafr El Sheikh',
+  '16': 'Gharbia',
+  '17': 'Monufia',
+  '18': 'Beheira',
+  '19': 'Ismailia',
+  '21': 'Giza',
+  '22': 'Beni Suef',
+  '23': 'Faiyum',
+  '24': 'Minya',
+  '25': 'Asyut',
+  '26': 'Sohag',
+  '27': 'Qena',
+  '28': 'Aswan',
+  '29': 'Luxor',
+  '31': 'Red Sea',
+  '32': 'New Valley',
+  '33': 'Matrouh',
+  '34': 'North Sinai',
+  '35': 'South Sinai',
+  '88': 'Born outside Egypt',
+}
+
+function validateEgyptianNationalId(id, isAr = false) {
+  if (!id || id.length !== 14 || !/^\d{14}$/.test(id)) {
+    return {
+      valid: false,
+      message: isAr ? 'يجب أن يتكون الرقم القومي من ١٤ رقماً.' : 'National ID must be exactly 14 digits.',
+    }
+  }
+
+  // 1. Century Digit Check (2 = 1900-1999, 3 = 2000-2099)
+  const centuryDigit = id[0]
+  if (centuryDigit !== '2' && centuryDigit !== '3') {
+    return {
+      valid: false,
+      message: isAr
+        ? 'رقم قومي غير صالح: يجب أن يبدأ بـ ٢ (مواليد ١٩٠٠-١٩٩٩) أو ٣ (مواليد ٢٠٠٠ فما فوق).'
+        : 'Invalid first digit: Must start with 2 (born 1900–1999) or 3 (born 2000+).',
+    }
+  }
+
+  // 2. Decode Birth Date (C YY MM DD)
+  const century = centuryDigit === '2' ? 1900 : 2000
+  const yearSuffix = parseInt(id.substring(1, 3), 10)
+  const year = century + yearSuffix
+  const month = parseInt(id.substring(3, 5), 10)
+  const day = parseInt(id.substring(5, 7), 10)
+
+  if (month < 1 || month > 12) {
+    return {
+      valid: false,
+      message: isAr ? 'شهر الميلاد في الرقم القومي غير صالح (من ٠١ إلى ١٢).' : 'Invalid birth month in National ID (must be 01–12).',
+    }
+  }
+
+  const daysInMonth = new Date(year, month, 0).getDate()
+  if (day < 1 || day > daysInMonth) {
+    return {
+      valid: false,
+      message: isAr ? `يوم الميلاد غير صالح لهذا الشهر (الحد الأقصى ${daysInMonth} يوم).` : `Invalid birth day in National ID for this month.`,
+    }
+  }
+
+  const birthDate = new Date(year, month - 1, day)
+  const today = new Date()
+
+  if (birthDate > today) {
+    return {
+      valid: false,
+      message: isAr ? 'تاريخ الميلاد لا يمكن أن يكون في المستقبل.' : 'Birth date cannot be in the future.',
+    }
+  }
+
+  // 3. Realistic Age Check (Min 21, Max 100)
+  let age = today.getFullYear() - birthDate.getFullYear()
+  const monthDiff = today.getMonth() - birthDate.getMonth()
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age--
+  }
+
+  if (age < 21) {
+    return {
+      valid: false,
+      message: isAr
+        ? 'يشترط ألا يقل عمر العميل عن ٢١ عاماً لفتح الحساب رقمياً وفقاً لتعليمات البنك المركزي.'
+        : 'Applicant must be at least 21 years old as per Central Bank of Egypt onboarding regulations.',
+    }
+  }
+
+  if (age > 100) {
+    return {
+      valid: false,
+      message: isAr
+        ? `تاريخ الميلاد المستخرج (${year}) غير صالح. لمواليد سنة ٢٠٠٠ فما فوق يجب أن يبدأ الرقم القومي بـ ٣.`
+        : `Invalid century digit: For births in 2000+, National ID must start with 3, not 2.`,
+    }
+  }
+
+  // 4. Governorate Code Check
+  const govCode = id.substring(7, 9)
+  const governorate = EGYPT_GOVERNORATE_CODES[govCode]
+  if (!governorate) {
+    return {
+      valid: false,
+      message: isAr ? 'كود المحافظة في الرقم القومي (الرقمان ٨ و ٩) غير مسجل بالسجل المدني.' : 'Invalid governorate registry code (digits 8 & 9).',
+    }
+  }
+
+  const formattedDob = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+
+  return {
+    valid: true,
+    birthDate: formattedDob,
+    governorate,
+  }
+}
+
 const initialForm = {
   eligibility: {
     newCustomer: false,
@@ -84,6 +212,9 @@ const initialForm = {
   incomeProofDocument: null,
   method: 'branch',
   terms: false,
+  selectedBranch: '',
+  appointmentDate: '',
+  appointmentSlot: '',
 }
 
 const translations = {
@@ -102,10 +233,10 @@ const translations = {
     verified: 'Verified',
     change: 'Change',
     selectOption: 'Select an option',
-    dateFormatHint: 'Use YYYY-MM-DD',
-    nameHint: 'Correct OCR spelling mistakes here',
+    dateFormatHint: 'Decoded automatically (YYYY-MM-DD)',
+    nameHint: 'Enter full name (minimum 3 names as on card)',
     addressHint: 'You can update your current residential address later if different',
-    mobileHint: 'We will send a verification code to this number',
+    mobileHint: 'Must be 11 digits starting with 010, 011, 012, or 015',
     appStatus: 'Application status',
     steps: [
       { short: 'Prepare', title: 'Get ready' },
@@ -160,7 +291,7 @@ const translations = {
       scanButton: 'Scan ID',
       scanning: 'Scanning...',
       scanError: 'We could not confidently find a 14-digit National ID. Try a clearer image or enter it manually.',
-      scanHint: '14 digits, shown on your National ID',
+      scanHint: '14 digits: Starts with 2 (1900s) or 3 (2000s)',
     },
     contact: {
       lead: 'Verify the contact details NBE will use for application updates. Never share this code. NBE employees will not ask you for it.',
@@ -202,7 +333,9 @@ const translations = {
       methodTitle: 'How would you like to complete your request?',
       methodCopy: 'Your online information will be ready when you arrive.',
       viewDetails: 'View details',
-      legalText: 'I have read and agree to the account-opening terms and conditions and confirm that my information is accurate.',
+      legalText: 'I have read and agree to the',
+      legalLink: 'account-opening terms and conditions',
+      legalTextSuffix: 'and confirm that my information is accurate.',
       securityNote: 'Submitting creates a request—it does not open the account until NBE verifies your original documents and physical signature.',
       edit: 'Edit',
       methods: {
@@ -219,6 +352,16 @@ const translations = {
         mostConvenient: 'Most convenient',
         eligibilityApplies: 'Eligibility applies',
       },
+    },
+    termsModal: {
+      title: 'NBE Retail Account Terms & Conditions',
+      p1Title: '1. Eligibility & Customer Due Diligence',
+      p1Text: 'The applicant confirms accuracy of provided data and compliance with the 21+ age and Egyptian residency mandates.',
+      p2Title: '2. Document Authentication',
+      p2Text: 'Account activation remains pending until physical verification of the original National ID and physical signature at the branch or during the authorized employee visit.',
+      p3Title: '3. Data Privacy & AML Compliance',
+      p3Text: 'All customer information is strictly protected under Egyptian Banking Secrecy regulations and Central Bank of Egypt AML/CFT compliance directives.',
+      acceptButton: 'I Agree & Accept Terms',
     },
     success: {
       lead: 'Thank you, {name}',
@@ -276,10 +419,10 @@ const translations = {
     verified: 'تم التحقق',
     change: 'تغيير',
     selectOption: 'اختر خيارًا',
-    dateFormatHint: 'استخدم YYYY-MM-DD',
-    nameHint: 'صحح أخطاء OCR في الاسم هنا',
+    dateFormatHint: 'مستخرج آلياً من الرقم القومي',
+    nameHint: 'الاسم كما هو مدون بالبطاقة (ثلاثي على الأقل)',
     addressHint: 'يمكنك تحديث عنوانك الحالي لاحقًا إذا كان مختلفًا',
-    mobileHint: 'سنرسل رمز التحقق إلى هذا الرقم',
+    mobileHint: '١١ رقماً تبدأ بـ (010, 011, 012, 015)',
     appStatus: 'حالة الطلب',
     steps: [
       { short: 'التجهيز', title: 'استعد' },
@@ -334,7 +477,7 @@ const translations = {
       scanButton: 'مسح البطاقة',
       scanning: 'جارٍ المسح...',
       scanError: 'تعذر العثور على رقم قومي مكون من 14 رقمًا بشكل موثوق. جرّب صورة أوضح أو أدخله يدويًا.',
-      scanHint: '14 رقمًا كما هو موضح في بطاقتك الوطنية',
+      scanHint: '١٤ رقماً: يبدأ بـ ٢ (مواليد القرن ٢٠) أو ٣ (مواليد القرن ٢١)',
     },
     contact: {
       lead: 'تحقق من تفاصيل التواصل التي سيستخدمها البنك لتحديث طلبك. لا تشارك هذا الرمز أبدًا. لن يطلب منك موظفو البنك ذلك.',
@@ -376,7 +519,9 @@ const translations = {
       methodTitle: 'كيف تود إكمال طلبك؟',
       methodCopy: 'ستكون معلوماتك عبر الإنترنت جاهزة عند حضورك.',
       viewDetails: 'عرض التفاصيل',
-      legalText: 'لقد قرأت وأوافق على الشروط والأحكام الخاصة بفتح الحساب وأؤكد أن معلوماتي دقيقة.',
+      legalText: 'لقد قرأت وأوافق على',
+      legalLink: 'الشروط والأحكام الخاصة بفتح الحساب',
+      legalTextSuffix: 'وأؤكد أن معلوماتي دقيقة.',
       securityNote: 'يؤدي التقديم إلى إنشاء طلب، لكنه لا يفتح الحساب حتى يتحقق البنك من المستندات الأصلية والتوقيع الفعلي.',
       edit: 'تعديل',
       methods: {
@@ -393,6 +538,16 @@ const translations = {
         mostConvenient: 'الأكثر ملاءمة',
         eligibilityApplies: 'يطبق التأهيل',
       },
+    },
+    termsModal: {
+      title: 'الشروط والأحكام المصرفية لفتح الحساب',
+      p1Title: '١. الأهلية والعناية الواجبة بالعملاء',
+      p1Text: 'يقر العميل بصحة البيانات المدخلة وبأنه مواطن مصري مقيم لا يقل عمره عن ٢١ عاماً وفقاً للضوابط المصرفية.',
+      p2Title: '٢. التحقق الفعلي والمستندات',
+      p2Text: 'لا يعتبر الحساب مفتوحاً أو فعالاً للعمليات إلا بعد مطابقة أصل بطاقة الرقم القومي والتوقيع الفعلي بالفرع أو أمام الموظف المختص.',
+      p3Title: '٣. سرية الحسابات ومكافحة غسل الأموال',
+      p3Text: 'تخضع كافة البيانات لقواعد حماية سرية حسابات العملاء وتعليمات البنك المركزي المصري ولوائح مكافحة غسل الأموال.',
+      acceptButton: 'موافق وقبول الشروط',
     },
     success: {
       lead: 'شكرًا لك، {name}',
@@ -455,6 +610,8 @@ function App() {
   const [language, setLanguage] = useState(() => localStorage.getItem('nbe_lang') || 'en')
   const headingRef = useRef(null)
   const [showReceipt, setShowReceipt] = useState(false)
+  const [showTermsModal, setShowTermsModal] = useState(false)
+  const [isBookingOpen, setIsBookingOpen] = useState(false)
 
   const [currentOfficer, setCurrentOfficer] = useState(() => {
     try {
@@ -466,6 +623,7 @@ function App() {
   })
 
   const t = translations[language]
+  const isAr = language === 'ar'
 
   useEffect(() => {
     document.documentElement.lang = language
@@ -511,9 +669,15 @@ function App() {
           address: data.address_line || current.address,
           mobile: data.mobile_hash || current.mobile,
           email: data.email_hash || current.email,
+          employment: data.employment_status || current.employment,
+          income: data.income_range || current.income,
+          method: data.submission_method || current.method,
+          selectedBranch: data.selected_branch || current.selectedBranch,
+          appointmentDate: data.appointment_date ? data.appointment_date.split('T')[0] : current.appointmentDate,
+          appointmentSlot: data.appointment_slot || current.appointmentSlot,
         }))
 
-        showToast('Your previous progress has been restored.')
+        showToast(isAr ? 'تم استعادة تقدمك السابق بنجاح.' : 'Your previous progress has been restored.')
       } catch (error) {
         console.error('Failed to resume application:', error)
       }
@@ -564,35 +728,74 @@ function App() {
     const nextErrors = {}
 
     if (step === 0 && !Object.values(form.eligibility).every(Boolean)) {
-      nextErrors.eligibility = 'Confirm each eligibility requirement to continue.'
+      nextErrors.eligibility = isAr
+        ? 'يرجى تأكيد جميع شروط الأهلية للمتابعة.'
+        : 'Confirm each eligibility requirement to continue.'
     }
 
     if (step === 1) {
-      if (!/^\d{14}$/.test(form.nationalId)) {
-        nextErrors.nationalId = 'Enter the 14-digit National ID number.'
+      // 1. Algorithmic National ID validation
+      const nidCheck = validateEgyptianNationalId(form.nationalId, isAr)
+      if (!nidCheck.valid) {
+        nextErrors.nationalId = nidCheck.message
       }
-      if (!/^01\d{9}$/.test(form.mobile)) {
-        nextErrors.mobile = 'Enter an Egyptian mobile number beginning with 01.'
+
+      // 2. Mobile Operator Check (010, 011, 012, 015)
+      if (!/^01[0125][0-9]{8}$/.test(form.mobile)) {
+        nextErrors.mobile = isAr
+          ? 'أدخل رقم هاتف مصري صالح مكون من ١١ رقماً يبدأ بـ (010, 011, 012, 015).'
+          : 'Enter a valid 11-digit Egyptian mobile number (010, 011, 012, 015).'
+      }
+
+      // 3. Name check
+      if (!form.fullName || form.fullName.trim().split(/\s+/).length < 2) {
+        nextErrors.fullName = isAr
+          ? 'يرجى إدخال الاسم بالكامل (الاسم الأول واسم العائلة على الأقل).'
+          : 'Please enter your full name (at least first and last name).'
+      }
+
+      // 4. DOB check
+      if (!form.dateOfBirth) {
+        nextErrors.dateOfBirth = isAr ? 'تاريخ الميلاد مطلوب.' : 'Date of birth is required.'
+      } else if (nidCheck.valid && form.dateOfBirth !== nidCheck.birthDate) {
+        nextErrors.dateOfBirth = isAr
+          ? `تاريخ الميلاد (${form.dateOfBirth}) لا يطابق الرقم القومي (${nidCheck.birthDate}).`
+          : `Date of birth does not match National ID (${nidCheck.birthDate}).`
+      }
+
+      // 5. Governorate check
+      if (!form.governorate) {
+        nextErrors.governorate = isAr ? 'المحافظة مطلوبة.' : 'Governorate is required.'
       }
     }
 
     if (step === 2) {
-      if (!mobileVerified) nextErrors.smsOtp = 'Verify your mobile number to continue.'
-      if (!/^\S+@\S+\.\S+$/.test(form.email)) {
-        nextErrors.email = 'Enter a valid email address.'
+      if (!mobileVerified) {
+        nextErrors.smsOtp = isAr ? 'يرجى تأكيد رقم هاتفك للمتابعة.' : 'Verify your mobile number to continue.'
       }
-      if (!emailVerified) nextErrors.emailOtp = 'Verify your email address to continue.'
+      if (!/^\S+@\S+\.\S+$/.test(form.email)) {
+        nextErrors.email = isAr ? 'أدخل بريداً إلكترونياً صالحاً.' : 'Enter a valid email address.'
+      }
+      if (!emailVerified) {
+        nextErrors.emailOtp = isAr ? 'يرجى تأكيد بريدك الإلكتروني للمتابعة.' : 'Verify your email address to continue.'
+      }
     }
 
     if (step === 3) {
       ;['employment', 'income'].forEach((name) => {
-        if (!form[name].trim()) nextErrors[name] = `${t.fieldLabels[name]} is required.`
+        if (!form[name]?.trim()) {
+          nextErrors[name] = isAr ? `${t.fieldLabels[name]} مطلوب.` : `${t.fieldLabels[name]} is required.`
+        }
       })
     }
 
     if (step === 4) {
-      if (!form.method) nextErrors.method = 'Choose how you will complete your request.'
-      if (!form.terms) nextErrors.terms = 'Read and accept the terms to submit.'
+      if (!form.method) {
+        nextErrors.method = isAr ? 'اختر وسيلة استكمال طلبك.' : 'Choose how you will complete your request.'
+      }
+      if (!form.terms) {
+        nextErrors.terms = isAr ? 'يجب قراءة الشروط والأحكام والموافقة عليها.' : 'Read and accept the terms to submit.'
+      }
     }
 
     setErrors(nextErrors)
@@ -605,7 +808,7 @@ function App() {
     if (step === 4) {
       setSubmitted(true)
       await handleSave('submitted', 'track')
-      showToast('Application successfully submitted!')
+      showToast(isAr ? 'تم إرسال الطلب بنجاح!' : 'Application successfully submitted!')
     } else {
       handleSave(null, t.steps[step + 1]?.short.toLowerCase())
     }
@@ -671,6 +874,9 @@ function App() {
           method: form.method,
           status: overrideStatus,
           currentStep: overrideStep || t.steps[step]?.short.toLowerCase() || 'prepare',
+          selectedBranch: form.selectedBranch,
+          appointmentDate: form.appointmentDate,
+          appointmentSlot: form.appointmentSlot,
         }),
       })
 
@@ -685,7 +891,7 @@ function App() {
 
   const handleSendEmailOtp = async () => {
     if (!form.email) {
-      showToast('Please enter an email address first.')
+      showToast(isAr ? 'يرجى إدخال البريد الإلكتروني أولاً.' : 'Please enter an email address first.')
       return
     }
 
@@ -702,16 +908,19 @@ function App() {
       if (!response.ok) throw new Error('Failed to send email.')
 
       setEmailOtpSent(true)
-      showToast('Verification code sent to your email!')
+      showToast(isAr ? 'تم إرسال رمز التحقق إلى بريدك الإلكتروني!' : 'Verification code sent to your email!')
     } catch (error) {
       console.error(error)
-      showToast('Error sending verification code.')
+      showToast(isAr ? 'حدث خطأ في إرسال رمز التحقق.' : 'Error sending verification code.')
     }
   }
 
   const handleVerifyEmailOtp = async () => {
     if (!form.emailOtp || form.emailOtp.length !== 6) {
-      setErrors((current) => ({ ...current, emailOtp: 'Enter the 6-digit code.' }))
+      setErrors((current) => ({
+        ...current,
+        emailOtp: isAr ? 'أدخل الرمز المكون من ٦ أرقام.' : 'Enter the 6-digit code.',
+      }))
       return
     }
 
@@ -728,15 +937,22 @@ function App() {
 
       setEmailVerified(true)
       setErrors((current) => ({ ...current, emailOtp: undefined }))
-      showToast('Email address verified successfully!')
+      showToast(isAr ? 'تم التحقق من البريد الإلكتروني بنجاح!' : 'Email address verified successfully!')
     } catch (error) {
-      setErrors((current) => ({ ...current, emailOtp: error.message || 'Invalid code.' }))
+      setErrors((current) => ({
+        ...current,
+        emailOtp: error.message || (isAr ? 'رمز غير صالح.' : 'Invalid code.'),
+      }))
     }
   }
 
   const handleSendMobileOtp = async () => {
     if (!form.mobile || !/^01[0125][0-9]{8}$/.test(form.mobile)) {
-      showToast('Please enter a valid 11-digit Egyptian mobile number.')
+      showToast(
+        isAr
+          ? 'يرجى إدخال رقم هاتف مصري صالح (010, 011, 012, 015).'
+          : 'Please enter a valid 11-digit Egyptian mobile number.'
+      )
       return
     }
 
@@ -754,7 +970,7 @@ function App() {
       if (!res.ok) throw new Error(data.message || 'Failed to dispatch SMS')
 
       setMobileOtpSent(true)
-      showToast('Verification code dispatched!')
+      showToast(isAr ? 'تم إرسال رمز التحقق!' : 'Verification code dispatched!')
     } catch (error) {
       showToast(error.message)
     }
@@ -762,7 +978,10 @@ function App() {
 
   const handleVerifyMobileOtp = async () => {
     if (!form.smsOtp || form.smsOtp.length !== 6) {
-      setErrors((current) => ({ ...current, smsOtp: 'Enter the 6-digit code.' }))
+      setErrors((current) => ({
+        ...current,
+        smsOtp: isAr ? 'أدخل الرمز المكون من ٦ أرقام.' : 'Enter the 6-digit code.',
+      }))
       return
     }
 
@@ -780,10 +999,44 @@ function App() {
 
       setMobileVerified(true)
       setErrors((current) => ({ ...current, smsOtp: undefined }))
-      showToast('Mobile number verified successfully!')
+      showToast(isAr ? 'تم التحقق من رقم الهاتف بنجاح!' : 'Mobile number verified successfully!')
     } catch (error) {
-      setErrors((current) => ({ ...current, smsOtp: error.message || 'Invalid code.' }))
+      setErrors((current) => ({
+        ...current,
+        smsOtp: error.message || (isAr ? 'رمز غير صالح.' : 'Invalid code.'),
+      }))
     }
+  }
+
+  const handleConfirmBooking = async (bookingDetails) => {
+    update('selectedBranch', bookingDetails.branchName)
+    update('appointmentDate', bookingDetails.date)
+    update('appointmentSlot', bookingDetails.slot)
+
+    const currentAppId = applicationId || localStorage.getItem('nbe_app_id')
+    if (currentAppId) {
+      try {
+        await fetch(`${API_BASE_URL}/api/applications/${currentAppId}/profile`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            selectedBranch: bookingDetails.branchName,
+            appointmentDate: bookingDetails.date,
+            appointmentSlot: bookingDetails.slot,
+            currentStep: 'track',
+            status: 'submitted',
+          }),
+        })
+      } catch (err) {
+        console.error('Failed to sync appointment with backend:', err)
+      }
+    }
+
+    showToast(
+      isAr
+        ? `تم تأكيد حجز الموعد بـ ${bookingDetails.branchName} بنجاح!`
+        : `Appointment confirmed at ${bookingDetails.branchName}!`
+    )
   }
 
   const handleOpenCrm = () => {
@@ -803,7 +1056,7 @@ function App() {
     sessionStorage.removeItem('nbe_staff_auth')
     setCurrentOfficer(null)
     setViewMode('form')
-    showToast('Logged out of Staff CRM.')
+    showToast(isAr ? 'تم تسجيل الخروج من نظام الموظفين.' : 'Logged out of Staff CRM.')
   }
 
   if (viewMode === 'crm') {
@@ -846,6 +1099,118 @@ function App() {
         onLoginSuccess={handleLoginSuccess}
       />
 
+      {/* Dynamic Booking Modal */}
+      <BookingModal
+        isOpen={isBookingOpen}
+        onClose={() => setIsBookingOpen(false)}
+        onConfirm={handleConfirmBooking}
+        userGovernorate={form.governorate || 'Cairo'}
+        methodType={form.method || 'branch'}
+        language={language}
+      />
+
+      {/* Terms & Conditions Modal */}
+      {showTermsModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(10, 25, 20, 0.72)',
+            display: 'grid',
+            placeItems: 'center',
+            zIndex: 1000,
+            backdropFilter: 'blur(5px)',
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#ffffff',
+              width: 'min(640px, 92vw)',
+              maxHeight: '84vh',
+              borderRadius: '12px',
+              padding: '28px',
+              overflowY: 'auto',
+              boxShadow: '0 24px 48px rgba(0,0,0,0.25)',
+              position: 'relative',
+              fontFamily: 'system-ui, sans-serif',
+              direction: isAr ? 'rtl' : 'ltr',
+              textAlign: isAr ? 'right' : 'left',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '16px',
+                borderBottom: '1px solid #dce4e0',
+                paddingBottom: '12px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#006643' }}>
+                <ShieldCheck size={24} />
+                <h2 style={{ fontSize: '18px', color: '#10281f', margin: 0 }}>
+                  {t.termsModal.title}
+                </h2>
+              </div>
+              <button
+                onClick={() => setShowTermsModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#60706a',
+                  padding: '4px',
+                }}
+                aria-label="Close terms modal"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div
+              style={{
+                fontSize: '13px',
+                color: '#384c44',
+                lineHeight: '1.75',
+                marginBottom: '22px',
+              }}
+            >
+              <p style={{ margin: '0 0 14px' }}>
+                <strong style={{ color: '#006643', display: 'block', marginBottom: '2px' }}>
+                  {t.termsModal.p1Title}
+                </strong>
+                {t.termsModal.p1Text}
+              </p>
+              <p style={{ margin: '0 0 14px' }}>
+                <strong style={{ color: '#006643', display: 'block', marginBottom: '2px' }}>
+                  {t.termsModal.p2Title}
+                </strong>
+                {t.termsModal.p2Text}
+              </p>
+              <p style={{ margin: 0 }}>
+                <strong style={{ color: '#006643', display: 'block', marginBottom: '2px' }}>
+                  {t.termsModal.p3Title}
+                </strong>
+                {t.termsModal.p3Text}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              className="button button-primary"
+              style={{ width: '100%', justifyContent: 'center', padding: '12px' }}
+              onClick={() => {
+                update('terms', true)
+                setShowTermsModal(false)
+              }}
+            >
+              <Check size={17} /> {t.termsModal.acceptButton}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="progress-strip" aria-hidden="true">
         <span style={{ width: `${progress}%` }} />
       </div>
@@ -871,6 +1236,7 @@ function App() {
               update={update}
               ocrResult={ocrResult}
               onOcrResult={applyOcrResult}
+              language={language}
               t={t}
             />
           )}
@@ -904,7 +1270,14 @@ function App() {
             <ApplicationStep form={form} errors={errors} update={update} t={t} />
           )}
           {step === 4 && (
-            <ReviewStep form={form} errors={errors} update={update} goTo={setStep} t={t} />
+            <ReviewStep
+              form={form}
+              errors={errors}
+              update={update}
+              goTo={setStep}
+              onOpenTermsModal={() => setShowTermsModal(true)}
+              t={t}
+            />
           )}
           {step === 5 && (
             <SuccessStep
@@ -912,6 +1285,8 @@ function App() {
               referenceNumber={referenceNumber}
               restart={restart}
               onDownloadSummary={() => setShowReceipt(true)}
+              onOpenBooking={() => setIsBookingOpen(true)}
+              language={language}
               t={t}
             />
           )}
@@ -920,7 +1295,7 @@ function App() {
             <div className="form-actions">
               {step > 0 ? (
                 <button className="button button-secondary" type="button" onClick={back}>
-                  {language === 'ar' ? (
+                  {isAr ? (
                     <ArrowRight size={18} aria-hidden="true" />
                   ) : (
                     <ArrowLeft size={18} aria-hidden="true" />
@@ -931,7 +1306,7 @@ function App() {
                 <span />
               )}
               <button className="button button-primary" type="button" onClick={next}>
-                {language === 'ar' ? (
+                {isAr ? (
                   <ArrowLeft size={18} aria-hidden="true" />
                 ) : (
                   <ArrowRight size={18} aria-hidden="true" />
@@ -1087,11 +1462,12 @@ function PrepareStep({ form, errors, onToggle, t }) {
   )
 }
 
-function IdentityStep({ form, errors, update, ocrResult, onOcrResult, t }) {
+function IdentityStep({ form, errors, update, ocrResult, onOcrResult, language, t }) {
   const fileInputRef = useRef(null)
   const [ocrStatus, setOcrStatus] = useState('idle')
   const [ocrError, setOcrError] = useState('')
   const isOcrScanning = ocrStatus === 'scanning'
+  const isAr = language === 'ar'
 
   const scanNationalId = async (event) => {
     const file = event.target.files?.[0]
@@ -1127,6 +1503,22 @@ function IdentityStep({ form, errors, update, ocrResult, onOcrResult, t }) {
     }
   }
 
+  const handleNationalIdChange = (value) => {
+    const cleanId = value.replace(/\D/g, '').slice(0, 14)
+    update('nationalId', cleanId)
+
+    // Real-time decoding
+    if (cleanId.length === 14) {
+      const decoded = validateEgyptianNationalId(cleanId, isAr)
+      if (decoded.valid) {
+        update('dateOfBirth', decoded.birthDate)
+        if (!form.governorate) {
+          update('governorate', decoded.governorate)
+        }
+      }
+    }
+  }
+
   return (
     <div className="step-body">
       <p className="lead">{t.identity.lead}</p>
@@ -1136,7 +1528,7 @@ function IdentityStep({ form, errors, update, ocrResult, onOcrResult, t }) {
           label={t.fieldLabels.nationalId}
           name="nationalId"
           value={form.nationalId}
-          onChange={(value) => update('nationalId', value.replace(/\D/g, '').slice(0, 14))}
+          onChange={handleNationalIdChange}
           error={errors.nationalId}
           hint={t.identity.scanHint}
           inputMode="numeric"
@@ -1152,7 +1544,7 @@ function IdentityStep({ form, errors, update, ocrResult, onOcrResult, t }) {
           error={errors.dateOfBirth}
           hint={t.dateFormatHint}
           inputMode="numeric"
-          placeholder="1990-06-14"
+          placeholder="1998-10-24"
           isLoading={isOcrScanning}
         />
         <Field
@@ -1163,6 +1555,7 @@ function IdentityStep({ form, errors, update, ocrResult, onOcrResult, t }) {
           error={errors.fullName}
           hint={t.nameHint}
           autoComplete="name"
+          placeholder="Mostafa Fouad Ahmed"
           isLoading={isOcrScanning}
         />
         <Field
@@ -1173,6 +1566,7 @@ function IdentityStep({ form, errors, update, ocrResult, onOcrResult, t }) {
           error={errors.address}
           hint={t.addressHint}
           autoComplete="street-address"
+          placeholder="Ezzat Salama St, Nasr City"
           isLoading={isOcrScanning}
         />
         <SelectField
@@ -1194,8 +1588,8 @@ function IdentityStep({ form, errors, update, ocrResult, onOcrResult, t }) {
           hint={t.mobileHint}
           inputMode="tel"
           autoComplete="tel"
-          placeholder="01X XXXX XXXX"
-          isComplete={/^01\d{9}$/.test(form.mobile)}
+          placeholder="01012345678"
+          isComplete={/^01[0125][0-9]{8}$/.test(form.mobile)}
         />
       </div>
 
@@ -1207,6 +1601,7 @@ function IdentityStep({ form, errors, update, ocrResult, onOcrResult, t }) {
           <span className="optional-tag">{t.identity.scanRecommended}</span>
           <h2>{t.identity.scanTitle}</h2>
           <p>{t.identity.scanDescription}</p>
+          {ocrError && <p style={{ color: '#b42318', marginTop: '6px', fontWeight: '600' }}>{ocrError}</p>}
         </div>
         <input
           ref={fileInputRef}
@@ -1563,7 +1958,7 @@ function ApplicationStep({ form, errors, update, t }) {
   )
 }
 
-function ReviewStep({ form, errors, update, goTo, t }) {
+function ReviewStep({ form, errors, update, goTo, onOpenTermsModal, t }) {
   const methods = [
     {
       id: 'ebranch',
@@ -1643,6 +2038,7 @@ function ReviewStep({ form, errors, update, goTo, t }) {
       </div>
       {errors.method && <FieldError message={errors.method} />}
 
+      {/* Terms Checkbox with Modal Trigger */}
       <div className="terms-box">
         <label className="terms-check">
           <input
@@ -1653,7 +2049,29 @@ function ReviewStep({ form, errors, update, goTo, t }) {
           <span className="custom-check">
             <Check size={15} />
           </span>
-          <span>{t.review.legalText}</span>
+          <span>
+            {t.review.legalText}{' '}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                onOpenTermsModal()
+              }}
+              style={{
+                color: '#006643',
+                fontWeight: '750',
+                textDecoration: 'underline',
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+              }}
+            >
+              {t.review.legalLink}
+            </button>{' '}
+            {t.review.legalTextSuffix}
+          </span>
         </label>
         {errors.terms && <FieldError message={errors.terms} />}
       </div>
@@ -1686,9 +2104,12 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function SuccessStep({ form, referenceNumber, restart, onDownloadSummary, t }) {
+function SuccessStep({ form, referenceNumber, restart, onDownloadSummary, onOpenBooking, language = 'en', t }) {
   const methodKey = form.method || 'branch'
   const firstName = form.fullName?.trim().split(' ')[0] || t.success.requestReady
+  const isAr = language === 'ar'
+
+  const hasAppointment = Boolean(form.appointmentDate && form.selectedBranch)
 
   return (
     <div className="step-body success-body">
@@ -1710,16 +2131,30 @@ function SuccessStep({ form, referenceNumber, restart, onDownloadSummary, t }) {
         </button>
       </div>
 
+      {/* Interactive Next Step & Appointment Booking Card */}
       <div className="next-step-card">
         <div className="next-step-icon">
           <CalendarDays size={25} />
         </div>
-        <div>
+        <div style={{ flex: 1 }}>
           <span className="eyebrow">{t.nextStep}</span>
-          <h2>{t.success.method[methodKey] || t.success.method.branch}</h2>
-          <p>{t.success.methodText[methodKey] || t.success.methodText.branch}</p>
-          <button className="button button-primary" type="button">
-            {t.success.action[methodKey] || t.success.action.branch} <ArrowRight size={18} />
+          <h2>
+            {hasAppointment
+              ? (isAr ? 'تم تأكيد حجز الموعد' : 'Appointment Confirmed')
+              : (t.success.method[methodKey] || t.success.method.branch)}
+          </h2>
+          <p>
+            {hasAppointment
+              ? (isAr
+                  ? `الفرع المختار: ${form.selectedBranch} | التاريخ: ${form.appointmentDate} | الوقت: ${form.appointmentSlot || '11:30 AM'}`
+                  : `Location: ${form.selectedBranch} | Date: ${form.appointmentDate} | Time Slot: ${form.appointmentSlot || '11:30 AM'}`)
+              : (t.success.methodText[methodKey] || t.success.methodText.branch)}
+          </p>
+          <button className="button button-primary" type="button" onClick={onOpenBooking}>
+            {hasAppointment
+              ? (isAr ? 'تعديل الموعد أو الفرع' : 'Change Appointment Slot')
+              : (t.success.action[methodKey] || t.success.action.branch)}{' '}
+            <ArrowRight size={18} />
           </button>
         </div>
       </div>
