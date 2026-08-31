@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { logger } from './logger.js'
+import { logger } from '../../common/logger.js'
 
 // In-memory store
 const appToChatId = new Map()

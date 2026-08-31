@@ -1,12 +1,29 @@
 /**
- * server/middleware.js
- * Intercepts incoming requests and runs the Validation Engine
+ * Profile validation helpers
  */
 import { validateNationalId, validateMobileNumber, validateEmailAddress } from './validation.js'
 
-export function validateOnboardingProfile(req, res, next) {
-  const { nationalId, mobile, email } = req.body
-  const fieldErrors = {}
+type NextFunction = () => void
+
+interface RequestLike {
+  body: ProfileValidationBody
+}
+
+interface ResponseLike {
+  status(code: number): {
+    json(payload: unknown): unknown
+  }
+}
+
+interface ProfileValidationBody {
+  nationalId?: string
+  mobile?: string
+  email?: string
+}
+
+export function getOnboardingProfileValidationErrors(body: ProfileValidationBody = {}) {
+  const { nationalId, mobile, email } = body
+  const fieldErrors: Record<string, string> = {}
 
   if (nationalId) {
     const idCheck = validateNationalId(nationalId)
@@ -22,6 +39,12 @@ export function validateOnboardingProfile(req, res, next) {
     const emailCheck = validateEmailAddress(email)
     if (!emailCheck.isValid) fieldErrors.email = emailCheck.message
   }
+
+  return fieldErrors
+}
+
+export function validateOnboardingProfile(req: RequestLike, res: ResponseLike, next: NextFunction) {
+  const fieldErrors = getOnboardingProfileValidationErrors(req.body)
 
   // If any field failed, stop the request right here
   if (Object.keys(fieldErrors).length > 0) {

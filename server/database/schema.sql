@@ -13,10 +13,20 @@ create table if not exists public.applications (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint applications_status_check check (status in ('draft', 'submitted', 'under_review', 'awaiting_documents', 'manual_review', 'approved', 'rejected', 'cancelled')),
-  constraint applications_current_step_check check (current_step in ('prepare', 'identity', 'contact', 'application', 'review', 'track')),
+  constraint applications_current_step_check check (current_step in ('prepare', 'identity', 'face', 'contact', 'application', 'review', 'track')),
   constraint applications_language_check check (language in ('en', 'ar')),
   constraint applications_submission_method_check check (submission_method is null or submission_method in ('ebranch', 'branch', 'employee_visit', 'digital'))
 );
+
+alter table public.applications
+  add column if not exists submission_method text,
+  add column if not exists submitted_at timestamptz,
+  add column if not exists assigned_officer text default 'Unassigned',
+  add column if not exists rejection_reason text;
+
+alter table public.applications drop constraint if exists applications_current_step_check;
+alter table public.applications
+  add constraint applications_current_step_check check (current_step in ('prepare', 'identity', 'face', 'contact', 'application', 'review', 'track'));
 
 create table if not exists public.applicant_profiles (
   application_id uuid primary key references public.applications(id) on delete cascade,
@@ -38,9 +48,13 @@ create table if not exists public.applicant_profiles (
   employment_status text,
   profession text,
   income_range text,
+  onboarding_fields jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.applicant_profiles
+  add column if not exists onboarding_fields jsonb not null default '{}'::jsonb;
 
 alter table public.applicant_profiles drop column if exists gender;
 

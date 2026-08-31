@@ -1,5 +1,5 @@
 import dotenv from 'dotenv'
-import pg from 'pg'
+import pg, { type QueryResult, type QueryResultRow } from 'pg'
 
 dotenv.config({ quiet: true })
 
@@ -15,6 +15,9 @@ export const pool = new Pool({
   ssl: process.env.PGSSL === 'true' ? { rejectUnauthorized: false } : false,
 })
 
-export async function query(text, params) {
-  return pool.query(text, params)
+export async function query<T extends QueryResultRow = QueryResultRow>(
+  text: string,
+  params?: unknown[],
+): Promise<QueryResult<T>> {
+  return pool.query<T>(text, params)
 }

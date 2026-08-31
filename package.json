@@ -5,18 +5,26 @@
   "type": "module",
   "scripts": {
     "dev": "vite frontend",
-    "dev:server": "nodemon server/index.js",
-    "server": "node server/index.js",
-    "db:migrate": "node server/migrate.js",
-    "port:4000": "node server/port-tools.js list 4000",
-    "port:kill:4000": "node server/port-tools.js kill 4000",
-    "build": "vite build frontend",
+    "dev:server": "nodemon --signal SIGTERM --watch server --ext ts --exec \"npm run build:server && node dist/server/index.js\"",
+    "build:server": "tsc -p tsconfig.json",
+    "server": "npm run build:server && node dist/server/index.js",
+    "db:migrate": "tsx server/database/migrate.ts",
+    "port:4000": "tsx server/common/port-tools.ts list 4000",
+    "port:kill:4000": "tsx server/common/port-tools.ts kill 4000",
+    "ocr:test:paddle": "tsx server/identity-verification/ocr/test-paddle-ocr.ts",
+    "build": "npm run build:server && vite build frontend",
     "preview": "vite preview frontend"
   },
   "dependencies": {
+    "@aws-amplify/ui-react": "^6.15.6",
+    "@aws-amplify/ui-react-liveness": "^3.6.9",
+    "@aws-sdk/client-rekognition": "^3.1118.0",
+    "@nestjs/common": "^11.2.1",
+    "@nestjs/core": "^11.2.1",
+    "@nestjs/platform-express": "^11.2.1",
+    "aws-amplify": "^6.20.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
-    "express": "^5.2.1",
     "helmet": "^8.3.0",
     "lucide-react": "^1.30.0",
     "multer": "^2.2.0",
@@ -25,11 +33,19 @@
     "pg": "^8.23.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
     "sharp": "^0.35.3",
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
+    "@types/multer": "^2.2.0",
+    "@types/node": "^26.2.0",
+    "@types/nodemailer": "^8.0.1",
+    "@types/pg": "^8.23.1",
     "@vitejs/plugin-react": "^6.0.5",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2",
     "vite": "^8.2.1"
   }
 }

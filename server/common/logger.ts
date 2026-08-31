@@ -1,17 +1,33 @@
 import crypto from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 
-const levels = {
+type NextFunction = () => void
+
+type LogLevel = 'debug' | 'info' | 'warn' | 'error'
+type LogMeta = Record<string, unknown>
+interface RequestWithId {
+  requestId?: string
+  method: string
+  path: string
+}
+
+interface ResponseLike {
+  statusCode: number
+  setHeader(name: string, value: string): void
+  on(event: 'finish', listener: () => void): void
+}
+
+const levels: Record<LogLevel, number> = {
   debug: 10,
   info: 20,
   warn: 30,
   error: 40,
 }
 
-const configuredLevel = process.env.LOG_LEVEL || 'info'
+const configuredLevel = (process.env.LOG_LEVEL || 'info') as LogLevel
 const minimumLevel = levels[configuredLevel] || levels.info
 
-function serialize(value) {
+function serialize(value: unknown) {
   return JSON.stringify(value, (_key, item) => {
     if (item instanceof Error) {
       return {
@@ -24,7 +40,7 @@ function serialize(value) {
   })
 }
 
-function write(level, message, meta = {}) {
+function write(level: LogLevel, message: string, meta: LogMeta = {}) {
   if (levels[level] < minimumLevel) return
 
   const entry = {
@@ -41,13 +57,13 @@ function write(level, message, meta = {}) {
 }
 
 export const logger = {
-  debug: (message, meta) => write('debug', message, meta),
-  info: (message, meta) => write('info', message, meta),
-  warn: (message, meta) => write('warn', message, meta),
-  error: (message, meta) => write('error', message, meta),
+  debug: (message: string, meta?: LogMeta) => write('debug', message, meta),
+  info: (message: string, meta?: LogMeta) => write('info', message, meta),
+  warn: (message: string, meta?: LogMeta) => write('warn', message, meta),
+  error: (message: string, meta?: LogMeta) => write('error', message, meta),
 }
 
-export function requestLogger(request, response, next) {
+export function requestLogger(request: RequestWithId, response: ResponseLike, next: NextFunction) {
   const startedAt = performance.now()
   const requestId = crypto.randomUUID()
   request.requestId = requestId

@@ -4,3 +4,7 @@ dist/
 *.local
 *.log
 *.traineddata
+.matplotlib/
+.paddle-cache/
+.paddlex-cache/
+tmp-ocr/

@@ -6,6 +6,7 @@ import {
   BadgeCheck,
   Building2,
   CalendarDays,
+  Camera,
   Check,
   CheckCircle2,
   ChevronRight,
@@ -30,6 +31,7 @@ import {
 } from 'lucide-react'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'
+const onboardingStepKeys = ['prepare', 'identity', 'face', 'contact', 'application', 'review', 'track']
 
 const governorateOptions = [
   'Cairo',
@@ -63,6 +65,96 @@ const governorateOptions = [
   'Other',
 ]
 
+const selectOptions = {
+  yesNo: ['Yes', 'No'],
+  customerType: ['Individuals'],
+  gender: ['Male', 'Female'],
+  correspondenceAddressSource: ['Residence address from ID document', 'Alternate residence address', 'Employer address'],
+  correspondenceLanguage: ['Arabic', 'English'],
+  deliveryMethod: ['Regular mail', 'Branch pickup', 'Employee visit'],
+  maritalStatus: ['Single', 'Married', 'Divorced', 'Widowed'],
+  housingNature: ['Owned', 'Rented', 'Family residence', 'Company housing'],
+  rentalType: ['New rent', 'Old rent', 'Furnished rent', 'Not applicable'],
+  educationStatus: ['No formal education', 'Secondary', 'Bachelor degree', 'Postgraduate'],
+  employmentNature: ['Employee', 'Self-employed', 'Business owner', 'Retired', 'Student', 'Not employed'],
+  employmentStatus: ['Temporary', 'Permanent'],
+  jobGrade: ['Staff', 'Supervisor', 'Manager', 'Senior manager', 'Executive'],
+  currentPosition: ['Specialist', 'Supervisor', 'Manager', 'Director', 'Business owner', 'Other'],
+  annualIncomeBracket: ['Less than EGP 120,000', 'EGP 120,000-300,000', 'EGP 300,001-600,000', 'More than EGP 600,000'],
+  accountType: ['Current account', 'Savings account'],
+  accountCurrency: ['Egyptian Pound'],
+  statementFrequency: ['Monthly', 'Quarterly', 'Semi-annually', 'Annually'],
+  statementDeliveryAddress: ['Correspondence address', 'ID residence address', 'Employer address'],
+  foreignCurrencyTransferHandling: [
+    'Open a new account in the transfer currency and deduct applicable fees',
+    'Convert the transfer into the currency of an existing account at the announced rate',
+  ],
+}
+
+const accountTransactionTypeOptions = [
+  'Cash',
+  'Cash and cheques',
+  'Cash deposit by third parties',
+  'Transfers from third parties',
+  'Other',
+]
+
+const additionalIdentityFields = [
+  { name: 'customerType', label: 'Customer type', type: 'select', options: selectOptions.customerType },
+  { name: 'firstNameAr', label: 'First name in Arabic', required: true, ocr: true },
+  { name: 'middleNameAr', label: 'Middle name in Arabic', required: true, ocr: true },
+  { name: 'lastNameAr', label: 'Last name in Arabic', required: true, ocr: true },
+  { name: 'gender', label: 'Gender', type: 'select', options: selectOptions.gender, ocr: true },
+  { name: 'nationalIdExpiryDate', label: 'National ID expiry date', type: 'date', ocr: true },
+  { name: 'nationalIdIssueDate', label: 'National ID issue date (year and month)', type: 'month', required: true, ocr: true },
+  { name: 'nationalIdCardPrintedNumber', label: 'Printed number on ID card', required: true, ocr: true },
+  { name: 'placeOfBirth', label: 'Place of birth', type: 'select', options: governorateOptions, required: true, ocr: true },
+  { name: 'idResidenceAddressAr', label: 'Residence address from ID in Arabic', maxLength: 50, required: true, ocr: true },
+  { name: 'alternateResidenceAddressAr', label: 'Alternate residence address in Arabic', maxLength: 50 },
+]
+
+const correspondenceFields = [
+  { name: 'correspondenceAddressSource', label: 'Correspondence address', type: 'select', options: selectOptions.correspondenceAddressSource },
+  { name: 'correspondenceLanguage', label: 'Correspondence language', type: 'select', options: selectOptions.correspondenceLanguage },
+  { name: 'landlineNumber', label: 'Landline number including area code', inputMode: 'tel' },
+  { name: 'deliveryMethod', label: 'Delivery method', type: 'select', options: selectOptions.deliveryMethod },
+]
+
+const socialFields = [
+  { name: 'maritalStatus', label: 'Marital status', type: 'select', options: selectOptions.maritalStatus },
+  { name: 'numberOfDependents', label: 'Number of dependents', type: 'number', min: '0' },
+  { name: 'housingNature', label: 'Housing nature', type: 'select', options: selectOptions.housingNature },
+  { name: 'rentalType', label: 'Rental type', type: 'select', options: selectOptions.rentalType },
+  { name: 'educationStatus', label: 'Education status', type: 'select', options: selectOptions.educationStatus },
+]
+
+const employmentFields = [
+  { name: 'employmentNature', label: 'Employment nature', type: 'select', options: selectOptions.employmentNature },
+  { name: 'employerName', label: 'Employer name', required: true },
+  { name: 'employmentStartDate', label: 'Employment start date', type: 'date' },
+  { name: 'employerAddress', label: 'Employer address', maxLength: 50 },
+  { name: 'monthlySalary', label: 'Monthly salary', type: 'number', min: '0' },
+  { name: 'employmentStatus', label: 'Employment status', type: 'select', options: selectOptions.employmentStatus },
+  { name: 'jobGrade', label: 'Job grade', type: 'select', options: selectOptions.jobGrade },
+  { name: 'employerPhone', label: 'Employer phone', inputMode: 'tel' },
+  { name: 'otherIncomeSources', label: 'Other income sources' },
+  { name: 'currentPosition', label: 'Current position', type: 'select', options: selectOptions.currentPosition, required: true },
+  { name: 'employerFax', label: 'Employer fax' },
+  { name: 'annualIncomeBracket', label: 'Annual income bracket', type: 'select', options: selectOptions.annualIncomeBracket },
+]
+
+const accountPreferenceFields = [
+  { name: 'accountType', label: 'Account type', type: 'select', options: selectOptions.accountType },
+  { name: 'accountCurrency', label: 'Account currency', type: 'select', options: selectOptions.accountCurrency, disabled: true },
+  { name: 'accountOpeningPurposeAr', label: 'Purpose of opening the account in Arabic', required: true },
+  { name: 'statementFrequency', label: 'Statement frequency', type: 'select', options: selectOptions.statementFrequency, required: true },
+  { name: 'statementDeliveryAddress', label: 'Statement delivery address', type: 'select', options: selectOptions.statementDeliveryAddress },
+  { name: 'cardPrintedName', label: 'Name to print on card', minLength: 7, maxLength: 20, required: true },
+  { name: 'foreignCurrencyTransferHandling', label: 'Foreign-currency transfer handling', type: 'select', options: selectOptions.foreignCurrencyTransferHandling },
+  { name: 'isBeneficialOwner', label: 'Are you the beneficial owner?', type: 'select', options: selectOptions.yesNo },
+  { name: 'hasOtherBankAccountsOrCards', label: 'Do you have accounts/cards with other banks?', type: 'select', options: selectOptions.yesNo, required: true },
+]
+
 const initialForm = {
   eligibility: {
     newCustomer: false,
@@ -73,17 +165,67 @@ const initialForm = {
   nationalId: '',
   dateOfBirth: '',
   fullName: '',
+  customerType: 'Individuals',
+  firstNameAr: '',
+  middleNameAr: '',
+  lastNameAr: '',
+  gender: '',
+  nationalIdExpiryDate: '',
+  nationalIdIssueDate: '',
+  nationalIdCardPrintedNumber: '',
+  placeOfBirth: '',
+  idResidenceAddressAr: '',
+  alternateResidenceAddressAr: '',
+  hasSpecialNeeds: false,
+  hasOtherNationality: false,
+  hasResidencyInOtherCountry: false,
   mobile: '',
   smsOtp: '',
   email: '',
+  emailConfirmation: '',
   emailOtp: '',
+  correspondenceAddressSource: 'Residence address from ID document',
+  correspondenceLanguage: 'Arabic',
+  landlineNumber: '',
+  deliveryMethod: 'Regular mail',
   governorate: '',
   address: '',
+  maritalStatus: '',
+  numberOfDependents: '',
+  housingNature: '',
+  rentalType: '',
+  educationStatus: '',
   employment: '',
   income: '',
+  employmentNature: '',
+  employerName: '',
+  employmentStartDate: '',
+  employerAddress: '',
+  monthlySalary: '',
+  isOrWasPep: false,
+  employmentStatus: '',
+  jobGrade: '',
+  employerPhone: '',
+  otherIncomeSources: '',
+  currentPosition: '',
+  employerFax: '',
+  annualIncomeBracket: '',
+  accountType: '',
+  accountCurrency: 'Egyptian Pound',
+  accountOpeningPurposeAr: '',
+  statementFrequency: '',
+  statementDeliveryAddress: '',
+  accountTransactionTypes: ['Cash', 'Transfers from third parties'],
+  cardPrintedName: '',
+  foreignCurrencyTransferHandling: 'Convert the transfer into the currency of an existing account at the announced rate',
+  smsAlertSubscription: true,
+  secureCodeSubscription: true,
+  isBeneficialOwner: 'Yes',
+  hasOtherBankAccountsOrCards: '',
   incomeProofDocument: null,
   method: '',
   terms: false,
+  faceVerification: null,
 }
 
 const translations = {
@@ -110,6 +252,7 @@ const translations = {
     steps: [
       { short: 'Prepare', title: 'Get ready' },
       { short: 'Identity', title: 'Verify your identity' },
+      { short: 'Face', title: 'Verify your face' },
       { short: 'Contact', title: 'Verify contact details' },
       { short: 'Employment', title: 'Employment proof' },
       { short: 'Review', title: 'Review and complete' },
@@ -130,6 +273,7 @@ const translations = {
     },
     nextLabels: [
       'Check eligibility and begin',
+      'Continue to face verification',
       'Continue to contact verification',
       'Continue to employment proof',
       'Continue to review',
@@ -161,6 +305,9 @@ const translations = {
       scanning: 'Scanning...',
       scanError: 'We could not confidently find a 14-digit National ID. Try a clearer image or enter it manually.',
       scanHint: '14 digits, shown on your National ID',
+    },
+    face: {
+      lead: 'Match your face to the National ID photo so the application can continue with a stronger identity check.',
     },
     contact: {
       lead: 'Verify the contact details NBE will use for application updates. Never share this code. NBE employees will not ask you for it.',
@@ -196,6 +343,7 @@ const translations = {
     review: {
       lead: 'Review your details, then choose how you will provide the original documents and physical signature.',
       identity: 'Identity',
+      face: 'Face match',
       contact: 'Contact',
       identityDetails: 'Identity details',
       employment: 'Employment',
@@ -284,6 +432,7 @@ const translations = {
     steps: [
       { short: 'التجهيز', title: 'استعد' },
       { short: 'الهوية', title: 'تحقق من هويتك' },
+      { short: 'الوجه', title: 'تحقق من الوجه' },
       { short: 'التواصل', title: 'تحقق من بيانات التواصل' },
       { short: 'العمل', title: 'إثبات العمل' },
       { short: 'المراجعة', title: 'راجع بياناتك وأكمل' },
@@ -304,6 +453,7 @@ const translations = {
     },
     nextLabels: [
       'تحقق من الأهلية وابدأ',
+      'الانتقال إلى تحقق الوجه',
       'الانتقال إلى التحقق من التواصل',
       'الانتقال إلى إثبات العمل',
       'الانتقال إلى المراجعة',
@@ -335,6 +485,9 @@ const translations = {
       scanning: 'جارٍ المسح...',
       scanError: 'تعذر العثور على رقم قومي مكون من 14 رقمًا بشكل موثوق. جرّب صورة أوضح أو أدخله يدويًا.',
       scanHint: '14 رقمًا كما هو موضح في بطاقتك الوطنية',
+    },
+    face: {
+      lead: 'طابق وجهك مع صورة بطاقة الرقم القومي حتى يستمر الطلب بفحص هوية أقوى.',
     },
     contact: {
       lead: 'تحقق من تفاصيل التواصل التي سيستخدمها البنك لتحديث طلبك. لا تشارك هذا الرمز أبدًا. لن يطلب منك موظفو البنك ذلك.',
@@ -370,6 +523,7 @@ const translations = {
     review: {
       lead: 'راجع بياناتك، ثم اختر الطريقة التي ستقدم بها المستندات الأصلية والتوقيع الفعلي.',
       identity: 'الهوية',
+      face: 'مطابقة الوجه',
       contact: 'التواصل',
       identityDetails: 'تفاصيل الهوية',
       employment: 'الوظيفة',
@@ -450,6 +604,7 @@ function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [emailOtpSent, setEmailOtpSent] = useState(false)
   const [ocrResult, setOcrResult] = useState(null)
+  const [ocrFiles, setOcrFiles] = useState({ front: null, back: null })
   const [mobileOtpSent, setMobileOtpSent] = useState(false)
   const [language, setLanguage] = useState(() => localStorage.getItem('nbe_lang') || 'en')
   const headingRef = useRef(null)
@@ -486,13 +641,14 @@ function App() {
         
         const fullName = [data.first_name, data.last_name].filter(Boolean).join(' ')
         
-        const savedStepIndex = t.steps.findIndex(s => s.short.toLowerCase() === data.current_step)
+        const savedStepIndex = onboardingStepKeys.findIndex((stepKey) => stepKey === data.current_step)
         if (savedStepIndex !== -1) {
           setStep(savedStepIndex)
         }
 
         setForm(current => ({
           ...current,
+          ...(data.onboarding_fields || {}),
           nationalId: data.national_id_hash || current.nationalId,
           fullName: fullName || current.fullName,
           dateOfBirth: data.date_of_birth ? data.date_of_birth.split('T')[0] : current.dateOfBirth,
@@ -520,10 +676,36 @@ function App() {
       nationalId: result.extracted.nationalId || current.nationalId,
       dateOfBirth: result.extracted.dateOfBirth || current.dateOfBirth,
       fullName: result.extracted.name || current.fullName,
+      firstNameAr: result.extracted.firstNameAr || current.firstNameAr,
+      middleNameAr: result.extracted.middleNameAr || current.middleNameAr,
+      lastNameAr: result.extracted.lastNameAr || current.lastNameAr,
+      gender: result.extracted.gender || current.gender,
+      nationalIdExpiryDate: result.extracted.nationalIdExpiryDate || current.nationalIdExpiryDate,
+      nationalIdIssueDate: result.extracted.nationalIdIssueDate || result.extracted.nationalIdIssueMonth || current.nationalIdIssueDate,
+      nationalIdCardPrintedNumber: result.extracted.nationalIdCardPrintedNumber || current.nationalIdCardPrintedNumber,
+      placeOfBirth: result.extracted.placeOfBirth || result.extracted.governorate || current.placeOfBirth,
+      idResidenceAddressAr: result.extracted.idResidenceAddressAr || result.extracted.address || current.idResidenceAddressAr,
+      maritalStatus: result.extracted.maritalStatus || current.maritalStatus,
       governorate: result.extracted.governorate || current.governorate,
       address: result.extracted.address || current.address,
     }))
-    setErrors((current) => ({ ...current, nationalId: undefined, dateOfBirth: undefined, fullName: undefined, governorate: undefined, address: undefined }))
+    setErrors((current) => ({
+      ...current,
+      nationalId: undefined,
+      dateOfBirth: undefined,
+      fullName: undefined,
+      firstNameAr: undefined,
+      middleNameAr: undefined,
+      lastNameAr: undefined,
+      gender: undefined,
+      nationalIdExpiryDate: undefined,
+      nationalIdIssueDate: undefined,
+      nationalIdCardPrintedNumber: undefined,
+      placeOfBirth: undefined,
+      idResidenceAddressAr: undefined,
+      governorate: undefined,
+      address: undefined,
+    }))
   }
 
   const updateEligibility = (name) => {
@@ -556,25 +738,41 @@ function App() {
       if (!/^01\d{9}$/.test(form.mobile)) {
         nextErrors.mobile = 'Enter an Egyptian mobile number beginning with 01.'
       }
+      additionalIdentityFields
+        .filter((field) => field.required)
+        .forEach((field) => {
+          if (!String(form[field.name] || '').trim()) nextErrors[field.name] = `${field.label} is required.`
+        })
     }
 
-    if (step === 2) {
+    if (step === 3) {
       if (!mobileVerified) nextErrors.smsOtp = 'Verify your mobile number to continue.'
       if (!/^\S+@\S+\.\S+$/.test(form.email)) {
         nextErrors.email = 'Enter a valid email address.'
       }
+      if (form.emailConfirmation && form.emailConfirmation.trim() !== form.email.trim()) {
+        nextErrors.emailConfirmation = 'Email confirmation must match your email address.'
+      }
       if (!emailVerified) nextErrors.emailOtp = 'Verify your email address to continue.'
     }
 
-    if (step === 3) {
+    if (step === 4) {
       ;['employment', 'income'].forEach(
         (name) => {
           if (!form[name].trim()) nextErrors[name] = `${t.fieldLabels[name]} is required.`
         },
       )
+      ;[...employmentFields, ...accountPreferenceFields]
+        .filter((field) => field.required)
+        .forEach((field) => {
+          if (!String(form[field.name] || '').trim()) nextErrors[field.name] = `${field.label} is required.`
+        })
+      if (!form.accountTransactionTypes?.length) {
+        nextErrors.accountTransactionTypes = 'Choose at least one account transaction type.'
+      }
     }
 
-    if (step === 4) {
+    if (step === 5) {
       if (!form.method) nextErrors.method = 'Choose how you will complete your request.'
       if (!form.terms) nextErrors.terms = 'Read and accept the terms to submit.'
     }
@@ -586,14 +784,14 @@ function App() {
   const next = async () => {
     if (!validateStep()) return
 
-    if (step === 4) {
-      // Step 4 is Review -> Clicking "Submit request"
+    if (step === 5) {
+      // Step 5 is Review -> Clicking "Submit request"
       setSubmitted(true)
       await handleSave('submitted', 'track')
       showToast('Application successfully submitted!')
     } else {
       // Auto-save progress as user advances each step
-      handleSave(null, t.steps[step + 1].short.toLowerCase())
+      handleSave(null, onboardingStepKeys[step + 1])
     }
 
     setStep((current) => Math.min(current + 1, t.steps.length - 1))
@@ -616,6 +814,7 @@ function App() {
     setErrors({})
     setMobileVerified(false)
     setEmailVerified(false)
+    setOcrFiles({ front: null, back: null })
     setSubmitted(false)
     setApplicationId(null)
     localStorage.removeItem('nbe_app_id')
@@ -630,7 +829,7 @@ function App() {
         const createRes = await fetch(`${API_BASE_URL}/api/applications`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ currentStep: t.steps[step].short.toLowerCase() })
+          body: JSON.stringify({ currentStep: onboardingStepKeys[step] })
         })
         
         if (!createRes.ok) throw new Error('Failed to create application session.')
@@ -653,9 +852,22 @@ function App() {
           email: form.email,
           employment: form.employment,
           income: form.income,
+          onboardingFields: {
+            ...form,
+            incomeProofDocument: form.incomeProofDocument
+              ? {
+                  name: form.incomeProofDocument.name,
+                  size: form.incomeProofDocument.size,
+                  type: form.incomeProofDocument.type,
+                }
+              : null,
+            nationalIdConfirmed: form.nationalId,
+            confirmedMobileNumber: form.mobile,
+            confirmedEmail: form.email,
+          },
           method: form.method,
           status: overrideStatus,
-          currentStep: overrideStep || t.steps[step].short.toLowerCase()
+          currentStep: overrideStep || onboardingStepKeys[step]
         })
       })
 
@@ -806,12 +1018,22 @@ function App() {
               form={form}
               errors={errors}
               update={update}
+              ocrFiles={ocrFiles}
+              setOcrFiles={setOcrFiles}
               ocrResult={ocrResult}
               onOcrResult={applyOcrResult}
               t={t}
             />
           )}
           {step === 2 && (
+            <FaceStep
+              form={form}
+              nationalIdFrontFile={ocrFiles.front}
+              onFaceVerificationResult={(result) => update('faceVerification', result)}
+              t={t}
+            />
+          )}
+          {step === 3 && (
             <ContactStep
               form={form}
               applicationId={applicationId}
@@ -831,17 +1053,17 @@ function App() {
               t={t}
             />
           )}
-          {step === 3 && (
+          {step === 4 && (
             <ApplicationStep form={form} errors={errors} update={update} t={t} />
           )}
-          {step === 4 && (
+          {step === 5 && (
             <ReviewStep form={form} errors={errors} update={update} goTo={setStep} t={t} />
           )}
-          {step === 5 && (
+          {step === 6 && (
             <SuccessStep form={form} referenceNumber={referenceNumber} restart={restart} t={t} />
           )}
 
-          {step < 5 && (
+          {step < 6 && (
             <div className="form-actions">
               {step > 0 ? (
                 <button className="button button-secondary" type="button" onClick={back}>
@@ -922,7 +1144,7 @@ function JourneyNav({ step, onStepSelect, submitted, t }) {
         {t.steps.map((item, index) => {
           const complete = index < step
           const active = index === step
-          const canVisit = index < step || (submitted && index === 5)
+          const canVisit = index < step || (submitted && index === 6)
           return (
             <li key={item.short} className={active ? 'active' : complete ? 'complete' : ''}>
               <button
@@ -984,24 +1206,47 @@ function PrepareStep({ form, errors, onToggle, t }) {
   )
 }
 
-function IdentityStep({ form, errors, update, ocrResult, onOcrResult, t }) {
-  const fileInputRef = useRef(null)
+function IdentityStep({ form, errors, update, ocrFiles, setOcrFiles, ocrResult, onOcrResult, t }) {
+  const frontInputRef = useRef(null)
+  const backInputRef = useRef(null)
   const [ocrStatus, setOcrStatus] = useState('idle')
   const [ocrError, setOcrError] = useState('')
   const isOcrScanning = ocrStatus === 'scanning'
+  const canScanNationalId = Boolean(ocrFiles.front && ocrFiles.back) && !isOcrScanning
 
-  const scanNationalId = async (event) => {
+  const selectOcrFile = (side, event) => {
     const file = event.target.files?.[0]
     if (!file) return
+
+    setOcrFiles((current) => ({ ...current, [side]: file }))
+    if (side === 'front') update('faceVerification', null)
+    setOcrError('')
+    setOcrStatus('idle')
+    event.target.value = ''
+  }
+
+  const removeOcrFile = (side) => {
+    setOcrFiles((current) => ({ ...current, [side]: null }))
+    if (side === 'front') update('faceVerification', null)
+    setOcrStatus('idle')
+  }
+
+  const scanNationalId = async () => {
+    if (!ocrFiles.front || !ocrFiles.back) {
+      setOcrStatus('needs-review')
+      setOcrError('Upload the front and back of the National ID before scanning.')
+      return
+    }
 
     setOcrStatus('scanning')
     setOcrError('')
 
     const formData = new FormData()
-    formData.append('nationalIdImage', file)
+    formData.append('frontImage', ocrFiles.front)
+    formData.append('backImage', ocrFiles.back)
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/identity/ocr`, {
+      const response = await fetch(`${API_BASE_URL}/api/identity/ocr/full`, {
         method: 'POST',
         body: formData,
       })
@@ -1019,13 +1264,74 @@ function IdentityStep({ form, errors, update, ocrResult, onOcrResult, t }) {
     } catch (error) {
       setOcrStatus('failed')
       setOcrError(error.message || 'OCR is unavailable. You can still enter the number manually.')
-    } finally {
-      event.target.value = ''
     }
   }
 
   return (
     <div className="step-body">
+      <div className="upload-card">
+        <div className="upload-illustration"><UserRound size={26} /></div>
+        <div className="upload-copy">
+          <span className="optional-tag">{t.identity.scanRecommended}</span>
+          <h2>{t.identity.scanTitle}</h2>
+          <p>{t.identity.scanDescription}</p>
+        </div>
+        <div className="ocr-upload-actions">
+          <OcrImagePicker
+            label="Front"
+            file={ocrFiles.front}
+            inputRef={frontInputRef}
+            onSelect={(event) => selectOcrFile('front', event)}
+            onRemove={() => removeOcrFile('front')}
+          />
+          <OcrImagePicker
+            label="Back"
+            file={ocrFiles.back}
+            inputRef={backInputRef}
+            onSelect={(event) => selectOcrFile('back', event)}
+            onRemove={() => removeOcrFile('back')}
+          />
+          <button
+            type="button"
+            className="button button-secondary"
+            disabled={!canScanNationalId}
+            onClick={scanNationalId}
+          >
+            <Upload size={18} /> {ocrStatus === 'scanning' ? t.identity.scanning : t.identity.scanButton}
+          </button>
+        </div>
+      </div>
+
+      {(ocrResult || ocrError) && (
+        <div className={`ocr-review ${ocrError ? 'has-warning' : ''}`}>
+          <div className="ocr-review-heading">
+            {ocrError ? <Info size={20} /> : <CheckCircle2 size={20} />}
+            <div>
+              <strong>{ocrError ? 'Review OCR result' : 'OCR fields applied'}</strong>
+              <p>{ocrError || 'Check the extracted fields below before continuing.'}</p>
+            </div>
+          </div>
+          {ocrResult?.extracted && (
+            <dl className="ocr-fields">
+              <div><dt>National ID</dt><dd>{ocrResult.extracted.nationalId || '—'}</dd></div>
+              <div><dt>Date of birth</dt><dd>{ocrResult.extracted.dateOfBirth || '—'}</dd></div>
+              <div><dt>First name</dt><dd>{ocrResult.extracted.firstNameAr || '—'}</dd></div>
+              <div><dt>Middle name</dt><dd>{ocrResult.extracted.middleNameAr || '—'}</dd></div>
+              <div><dt>Last name</dt><dd>{ocrResult.extracted.lastNameAr || '—'}</dd></div>
+              <div><dt>Gender</dt><dd>{ocrResult.extracted.gender || '—'}</dd></div>
+              <div><dt>Place of birth</dt><dd>{ocrResult.extracted.placeOfBirth || ocrResult.extracted.governorate || '—'}</dd></div>
+              <div><dt>Issue year and month</dt><dd>{ocrResult.extracted.nationalIdIssueDate || ocrResult.extracted.nationalIdIssueMonth || '—'}</dd></div>
+              <div><dt>Expiry date</dt><dd>{ocrResult.extracted.nationalIdExpiryDate || '—'}</dd></div>
+              <div><dt>Printed number</dt><dd>{ocrResult.extracted.nationalIdCardPrintedNumber || '—'}</dd></div>
+              <div><dt>Address</dt><dd>{ocrResult.extracted.idResidenceAddressAr || ocrResult.extracted.address || '—'}</dd></div>
+              <div><dt>Occupation</dt><dd>{ocrResult.extracted.occupation || '—'}</dd></div>
+              <div><dt>Religion</dt><dd>{ocrResult.extracted.religion || '—'}</dd></div>
+              <div><dt>Marital status</dt><dd>{ocrResult.extracted.maritalStatusAr || ocrResult.extracted.maritalStatus || '—'}</dd></div>
+            </dl>
+          )}
+        </div>
+      )}
+
       <p className="lead">{t.identity.lead}</p>
 
       <div className="form-grid two-columns">
@@ -1096,30 +1402,235 @@ function IdentityStep({ form, errors, update, ocrResult, onOcrResult, t }) {
         />
       </div>
 
-      <div className="upload-card">
-        <div className="upload-illustration"><UserRound size={26} /></div>
-        <div className="upload-copy">
-          <span className="optional-tag">{t.identity.scanRecommended}</span>
-          <h2>{t.identity.scanTitle}</h2>
-          <p>{t.identity.scanDescription}</p>
+      <FormSection title="Customer and personal identity details">
+        <FieldGrid fields={additionalIdentityFields} form={form} errors={errors} update={update} isLoading={isOcrScanning} />
+        <div className="eligibility-grid" style={{ marginTop: '18px' }}>
+          <CheckboxField name="hasSpecialNeeds" label="I have special needs and can hear, read, and write" checked={form.hasSpecialNeeds} update={update} />
+          <CheckboxField name="hasOtherNationality" label="I have another nationality" checked={form.hasOtherNationality} update={update} />
+          <CheckboxField name="hasResidencyInOtherCountry" label="I have residency rights in another country" checked={form.hasResidencyInOtherCountry} update={update} />
         </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="visually-hidden"
-          onChange={scanNationalId}
-        />
+      </FormSection>
+
+    </div>
+  )
+}
+
+function FaceStep({ form, nationalIdFrontFile, onFaceVerificationResult, t }) {
+  return (
+    <div className="step-body">
+      <p className="lead">{t.face.lead}</p>
+      <FaceVerificationPanel
+        nationalIdFrontFile={nationalIdFrontFile}
+        result={form.faceVerification}
+        onResult={onFaceVerificationResult}
+      />
+    </div>
+  )
+}
+
+function FaceVerificationPanel({ nationalIdFrontFile, result, onResult }) {
+  const videoRef = useRef(null)
+  const canvasRef = useRef(null)
+  const streamRef = useRef(null)
+  const capturedFramesRef = useRef([])
+  const [cameraStatus, setCameraStatus] = useState('idle')
+  const [message, setMessage] = useState('')
+  const [capturedCount, setCapturedCount] = useState(0)
+  const isCameraOn = cameraStatus === 'camera-ready'
+  const isWorking = cameraStatus === 'starting' || cameraStatus === 'capturing' || cameraStatus === 'verifying'
+
+  useEffect(() => () => stopCamera(), [])
+
+  const startCamera = async () => {
+    if (!nationalIdFrontFile) {
+      setMessage('Upload the front of the National ID first.')
+      return
+    }
+
+    try {
+      setCameraStatus('starting')
+      setMessage('')
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 960 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      })
+      streamRef.current = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        await videoRef.current.play()
+      }
+      capturedFramesRef.current = []
+      setCapturedCount(0)
+      setCameraStatus('camera-ready')
+    } catch (_error) {
+      setCameraStatus('failed')
+      setMessage('Camera access was blocked or unavailable.')
+    }
+  }
+
+  const stopCamera = () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop())
+    streamRef.current = null
+    if (videoRef.current) videoRef.current.srcObject = null
+  }
+
+  const closeCamera = () => {
+    stopCamera()
+    setCameraStatus('idle')
+  }
+
+  const captureAndVerify = async () => {
+    if (!nationalIdFrontFile) {
+      setMessage('Upload the front of the National ID first.')
+      return
+    }
+    if (!videoRef.current || !canvasRef.current) {
+      setMessage('Open the camera before verification.')
+      return
+    }
+
+    setCameraStatus('capturing')
+    setMessage('')
+    capturedFramesRef.current = []
+    setCapturedCount(0)
+
+    for (let index = 0; index < 4; index += 1) {
+      const blob = await captureFrame(videoRef.current, canvasRef.current)
+      capturedFramesRef.current.push(blob)
+      setCapturedCount(index + 1)
+      await delay(450)
+    }
+
+    setCameraStatus('verifying')
+    try {
+      const formData = new FormData()
+      formData.append('nationalIdFrontImage', nationalIdFrontFile)
+      capturedFramesRef.current.forEach((blob, index) => {
+        formData.append('selfieImages', blob, `selfie-${index + 1}.jpg`)
+      })
+
+      const response = await fetch(`${API_BASE_URL}/api/identity/face/verify`, {
+        method: 'POST',
+        body: formData,
+      })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.message || 'Face verification failed.')
+
+      onResult(payload)
+      setCameraStatus(payload.status === 'verified' ? 'verified' : 'needs-review')
+      setMessage(faceStatusMessage(payload))
+      stopCamera()
+    } catch (error) {
+      setCameraStatus('failed')
+      setMessage(error.message || 'Face verification is unavailable.')
+    }
+  }
+
+  return (
+    <div className={`face-card ${result?.status === 'verified' ? 'is-verified' : ''}`}>
+      <div className="upload-illustration"><Camera size={25} /></div>
+      <div className="face-card-main">
+        <div className="upload-copy">
+          <span className="optional-tag">Face match</span>
+          <h2>Verify face against ID photo</h2>
+          <p>Open the camera, capture a short selfie burst, and compare it with the National ID front image.</p>
+        </div>
+
+        {(isCameraOn || isWorking) && (
+          <div className="face-camera-frame">
+            <video ref={videoRef} muted playsInline />
+            <canvas ref={canvasRef} className="visually-hidden" />
+          </div>
+        )}
+
+        {(message || result) && (
+          <div className={`face-result ${result?.status === 'verified' ? 'is-verified' : ''}`}>
+            <ShieldCheck size={18} />
+            <span>
+              {message || faceStatusMessage(result)}
+              {result?.bestSimilarity !== undefined && ` Similarity: ${result.bestSimilarity}%.`}
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="face-actions">
         <button
           type="button"
           className="button button-secondary"
-          disabled={ocrStatus === 'scanning'}
-          onClick={() => fileInputRef.current?.click()}
+          disabled={isWorking}
+          onClick={isCameraOn ? captureAndVerify : startCamera}
         >
-          <Upload size={18} /> {ocrStatus === 'scanning' ? t.identity.scanning : t.identity.scanButton}
+          <Camera size={18} /> {faceActionLabel(cameraStatus, capturedCount)}
         </button>
+        {isCameraOn && (
+          <button type="button" className="icon-button" onClick={closeCamera} aria-label="Close camera">
+            <X size={16} />
+          </button>
+        )}
       </div>
+    </div>
+  )
+}
+
+function delay(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+function captureFrame(video, canvas) {
+  const width = video.videoWidth || 960
+  const height = video.videoHeight || 720
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  context.drawImage(video, 0, 0, width, height)
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob)
+      else reject(new Error('Could not capture a selfie frame.'))
+    }, 'image/jpeg', 0.92)
+  })
+}
+
+function faceActionLabel(status, capturedCount) {
+  if (status === 'starting') return 'Opening camera...'
+  if (status === 'capturing') return `Capturing ${capturedCount}/4`
+  if (status === 'verifying') return 'Verifying...'
+  if (status === 'camera-ready') return 'Capture & verify'
+  return 'Open camera'
+}
+
+function faceStatusMessage(result) {
+  if (!result) return ''
+  if (result.status === 'verified') return 'Face match verified.'
+  if (result.status === 'manual_review') return 'Face match needs staff review.'
+  return 'Face match was not accepted.'
+}
+
+function OcrImagePicker({ label, file, inputRef, onSelect, onRemove }) {
+  return (
+    <div className={`ocr-file-picker ${file ? 'has-file' : ''}`}>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="visually-hidden"
+        onChange={onSelect}
+      />
+      <button type="button" className="ocr-file-button" onClick={() => inputRef.current?.click()}>
+        <FileText size={17} />
+        <span>{file ? `${label}: ${file.name}` : `${label} image`}</span>
+      </button>
+      {file && (
+        <button type="button" className="icon-button" onClick={onRemove} aria-label={`Remove ${label.toLowerCase()} image`}>
+          <X size={16} />
+        </button>
+      )}
     </div>
   )
 }
@@ -1242,6 +1753,17 @@ function ContactStep({
               placeholder="name@example.com"
               disabled={emailVerified}
             />
+            <Field
+              label="Confirm email address"
+              name="emailConfirmation"
+              value={form.emailConfirmation}
+              onChange={(value) => update('emailConfirmation', value)}
+              error={errors.emailConfirmation}
+              autoComplete="email"
+              inputMode="email"
+              placeholder="name@example.com"
+              disabled={emailVerified}
+            />
           </div>
           
           {!emailVerified && !emailOtpSent && (
@@ -1279,6 +1801,14 @@ function ContactStep({
         <ShieldCheck size={21} />
         <span>{t.contact.security}</span>
       </div>
+
+      <FormSection title="Correspondence and contact details">
+        <div className="form-grid two-columns">
+          <Field label="Confirmed mobile number" name="confirmedMobileNumber" value={form.mobile} onChange={() => {}} disabled />
+          <Field label="Confirmed email" name="confirmedEmail" value={form.email} onChange={() => {}} disabled />
+        </div>
+        <FieldGrid fields={correspondenceFields} form={form} errors={errors} update={update} />
+      </FormSection>
     </div>
   )
 }
@@ -1323,6 +1853,101 @@ function OtpInput({ name, label, value, onChange, error, onVerify, verifyLabel }
   )
 }
 
+function FormSection({ title, children }) {
+  return (
+    <>
+      <div className="section-divider" />
+      <h2>{title}</h2>
+      {children}
+    </>
+  )
+}
+
+function FieldRenderer({ field, form, errors, update, isLoading }) {
+  if (field.type === 'select') {
+    return (
+      <SelectField
+        label={`${field.label}${field.required ? ' *' : ''}`}
+        name={field.name}
+        value={form[field.name] || ''}
+        onChange={(value) => update(field.name, value)}
+        error={errors[field.name]}
+        options={field.options}
+        placeholder="Select an option"
+        disabled={field.disabled}
+        isLoading={isLoading && field.ocr}
+      />
+    )
+  }
+
+  return (
+    <Field
+      label={`${field.label}${field.required ? ' *' : ''}`}
+      name={field.name}
+      value={form[field.name] || ''}
+      onChange={(value) => update(field.name, value)}
+      error={errors[field.name]}
+      type={field.type || 'text'}
+      inputMode={field.inputMode}
+      min={field.min}
+      minLength={field.minLength}
+      maxLength={field.maxLength}
+      disabled={field.disabled}
+      isLoading={isLoading && field.ocr}
+    />
+  )
+}
+
+function FieldGrid({ fields, form, errors, update, isLoading = false }) {
+  return (
+    <div className="form-grid two-columns">
+      {fields.map((field) => (
+        <FieldRenderer key={field.name} field={field} form={form} errors={errors} update={update} isLoading={isLoading} />
+      ))}
+    </div>
+  )
+}
+
+function CheckboxField({ name, label, checked, update }) {
+  return (
+    <label className="check-card">
+      <input type="checkbox" checked={Boolean(checked)} onChange={(event) => update(name, event.target.checked)} />
+      <span className="custom-check"><Check size={15} /></span>
+      <span>{label}</span>
+    </label>
+  )
+}
+
+function MultiCheckboxField({ name, legend, options, values, update, error }) {
+  const selected = Array.isArray(values) ? values : []
+  const toggle = (option) => {
+    update(
+      name,
+      selected.includes(option)
+        ? selected.filter((item) => item !== option)
+        : [...selected, option],
+    )
+  }
+
+  return (
+    <fieldset className={`checklist-fieldset ${error ? 'has-error' : ''}`}>
+      <legend>{legend}</legend>
+      <div className="eligibility-grid">
+        {options.map((option) => (
+          <CheckboxField
+            key={option}
+            name={`${name}-${option}`}
+            label={option}
+            checked={selected.includes(option)}
+            update={() => toggle(option)}
+          />
+        ))}
+      </div>
+      {error && <FieldError message={error} />}
+    </fieldset>
+  )
+}
+
 function ApplicationStep({ form, errors, update, t }) {
   const employmentDocumentRef = useRef(null)
   const uploadEmploymentDocument = (event) => {
@@ -1346,6 +1971,33 @@ function ApplicationStep({ form, errors, update, t }) {
         <SelectField label={t.fieldLabels.employment} name="employment" value={form.employment} onChange={(value) => update('employment', value)} error={errors.employment} options={['Employed', 'Self-employed', 'Retired', 'Student', 'Not currently employed']} placeholder={t.selectOption} />
         <SelectField label={t.fieldLabels.income} name="income" value={form.income} onChange={(value) => update('income', value)} error={errors.income} options={['Less than EGP 10,000', 'EGP 10,000–25,000', 'EGP 25,001–50,000', 'More than EGP 50,000']} placeholder={t.selectOption} />
       </div>
+
+      <FormSection title="Social, housing, and education details">
+        <FieldGrid fields={socialFields} form={form} errors={errors} update={update} />
+      </FormSection>
+
+      <FormSection title="Employment and income details">
+        <FieldGrid fields={employmentFields} form={form} errors={errors} update={update} />
+        <div className="eligibility-grid" style={{ marginTop: '18px' }}>
+          <CheckboxField name="isOrWasPep" label="I hold or previously held a senior public political, judicial, government, military, or diplomatic role" checked={form.isOrWasPep} update={update} />
+        </div>
+      </FormSection>
+
+      <FormSection title="Account setup and preferences">
+        <FieldGrid fields={accountPreferenceFields} form={form} errors={errors} update={update} />
+        <MultiCheckboxField
+          name="accountTransactionTypes"
+          legend="Account transaction types *"
+          options={accountTransactionTypeOptions}
+          values={form.accountTransactionTypes}
+          update={update}
+          error={errors.accountTransactionTypes}
+        />
+        <div className="eligibility-grid" style={{ marginTop: '18px' }}>
+          <CheckboxField name="smsAlertSubscription" label="Subscribe to SMS alerts" checked={form.smsAlertSubscription} update={update} />
+          <CheckboxField name="secureCodeSubscription" label="Subscribe to secure code for online purchases" checked={form.secureCodeSubscription} update={update} />
+        </div>
+      </FormSection>
 
       {form.employment && (
         <div className="dynamic-checklist">
@@ -1396,9 +2048,10 @@ function ReviewStep({ form, errors, update, goTo, t }) {
 
       <div className="review-card">
         <ReviewRow title={t.review.identity} value={`National ID ending ${form.nationalId.slice(-4) || '—'} · ${form.dateOfBirth || 'Date of birth not entered'}`} onEdit={() => goTo(1)} t={t} />
-        <ReviewRow title={t.review.contact} value={`${form.email || 'Email not entered'} · ${t.verified}`} onEdit={() => goTo(2)} t={t} />
+        <ReviewRow title={t.review.face} value={faceStatusMessage(form.faceVerification) || 'Face match not completed'} onEdit={() => goTo(2)} t={t} />
+        <ReviewRow title={t.review.contact} value={`${form.email || 'Email not entered'} · ${t.verified}`} onEdit={() => goTo(3)} t={t} />
         <ReviewRow title={t.review.identityDetails} value={`${form.fullName || 'Name not entered'} · ${form.governorate || 'Governorate not entered'}`} onEdit={() => goTo(1)} t={t} />
-        <ReviewRow title={t.review.employment} value={`${form.employment} · ${form.income} · ${form.incomeProofDocument?.name || 'No HR letter uploaded yet'}`} onEdit={() => goTo(3)} t={t} />
+        <ReviewRow title={t.review.employment} value={`${form.employment} · ${form.income} · ${form.incomeProofDocument?.name || 'No HR letter uploaded yet'}`} onEdit={() => goTo(4)} t={t} />
       </div>
 
       <div className="section-divider" />
@@ -1515,11 +2168,11 @@ function Field({ label, name, value, onChange, error, hint, isLoading, isComplet
   )
 }
 
-function SelectField({ label, name, value, onChange, error, options, isLoading, placeholder }) {
+function SelectField({ label, name, value, onChange, error, options, isLoading, placeholder, disabled }) {
   return (
     <div className={`field ${isLoading ? 'is-loading' : ''}`} aria-busy={isLoading || undefined}>
       <label htmlFor={name}>{label}</label>
-      <select id={name} value={value} onChange={(event) => onChange(event.target.value)} className={`${error ? 'input-error' : ''} ${value ? 'is-filled' : ''} ${isLoading ? 'is-shimmering' : ''}`.trim()} aria-invalid={Boolean(error)} aria-describedby={error ? `${name}-error` : undefined}>
+      <select id={name} value={value} onChange={(event) => onChange(event.target.value)} className={`${error ? 'input-error' : ''} ${value ? 'is-filled' : ''} ${isLoading ? 'is-shimmering' : ''}`.trim()} aria-invalid={Boolean(error)} aria-describedby={error ? `${name}-error` : undefined} disabled={disabled}>
         <option value="">{placeholder || 'Select an option'}</option>
         {options.map((option) => <option key={option} value={option}>{option}</option>)}
       </select>

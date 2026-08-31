@@ -5,11 +5,11 @@ const execFileAsync = promisify(execFile)
 const command = process.argv[2] || 'list'
 const port = Number(process.env.PORT || process.argv[3] || 4000)
 
-async function getPortPids(targetPort) {
+async function getPortPids(targetPort: number) {
   const { stdout } = await execFileAsync('netstat.exe', ['-ano', '-p', 'tcp'])
   const lines = stdout.split(/\r?\n/)
   const matcher = new RegExp(`[:.]${targetPort}\\s+.*LISTENING\\s+(\\d+)`, 'i')
-  const pids = new Set()
+  const pids = new Set<string>()
 
   for (const line of lines) {
     const match = line.match(matcher)
