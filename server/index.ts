@@ -13,7 +13,9 @@ const port = Number(process.env.PORT || 4000)
 async function bootstrap() {
   try {
     const app = await NestFactory.create(AppModule, { logger: false })
-    app.use(helmet())
+    app.use(helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }))
     app.enableCors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173' })
     app.use(requestLogger)
     app.useGlobalFilters(new GlobalExceptionFilter())

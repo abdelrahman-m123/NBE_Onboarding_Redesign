@@ -71,3 +71,11 @@ Use this as the living checklist for the redesign prototype. When a gap is compl
 - [ ] Add content review with NBE legal, compliance, security, and service teams.
 - [ ] Add production threat model and privacy review before pilot.
 - [ ] Define pilot success criteria and compare against baseline NBE funnel data.
+
+
+- presentation with a feasability pitch for ocr and facial recognition next friday
+- full on documentation for the ocr and face liveness features on tuesday 
+
+keda e3mel eh ?
+adjust the ocr make it better and actually understand how it works 
+adjust the 

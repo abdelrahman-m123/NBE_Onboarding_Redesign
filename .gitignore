@@ -8,3 +8,8 @@ dist/
 .paddle-cache/
 .paddlex-cache/
 tmp-ocr/
+server/uploads/
+
+# Private identity-verification fixtures must never be committed.
+test-ids/
+test-national-id.png

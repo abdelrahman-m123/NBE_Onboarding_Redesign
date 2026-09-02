@@ -9,7 +9,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const response = host.switchToHttp().getResponse()
 
     if (exception instanceof multer.MulterError || (
-      exception instanceof Error && exception.message === 'Only image files can be scanned.'
+      exception instanceof Error && [
+        'Only image files can be scanned.',
+        'Upload National ID images and HR letters as image or PDF files.',
+        'Upload National ID images, face captures, and HR letters as supported image or PDF files.',
+      ].includes(exception.message)
     )) {
       logger.warn('request.validation_failed', { error: exception })
       response.status(400).json({ message: exception.message })

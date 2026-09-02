@@ -15,6 +15,9 @@ export interface SaveProfileBody {
   employment?: string
   income?: string
   method?: string
+  selectedBranch?: string
+  appointmentDate?: string
+  appointmentSlot?: string
   status?: string
   currentStep?: string
 }

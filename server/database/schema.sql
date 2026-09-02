@@ -127,6 +127,30 @@ create table if not exists public.document_requirements (
   constraint document_requirements_status_check check (status in ('needed', 'provided', 'waived', 'not_applicable'))
 );
 
+create table if not exists public.application_uploads (
+  id uuid primary key default gen_random_uuid(),
+  application_id uuid not null references public.applications(id) on delete cascade,
+  document_type text not null,
+  document_side text,
+  original_name text not null,
+  stored_name text not null,
+  file_path text not null,
+  mime_type text,
+  file_size integer,
+  is_current boolean not null default true,
+  uploaded_at timestamptz not null default now(),
+  constraint application_uploads_document_type_check check (document_type in ('national_id', 'employment_hr_letter', 'face_selfie')),
+  constraint application_uploads_document_side_check check (document_side is null or document_side in ('front', 'back', 'selfie_1', 'selfie_2', 'selfie_3', 'selfie_4', 'selfie_5', 'selfie_6'))
+);
+
+alter table public.application_uploads drop constraint if exists application_uploads_document_type_check;
+alter table public.application_uploads
+  add constraint application_uploads_document_type_check check (document_type in ('national_id', 'employment_hr_letter', 'face_selfie'));
+
+alter table public.application_uploads drop constraint if exists application_uploads_document_side_check;
+alter table public.application_uploads
+  add constraint application_uploads_document_side_check check (document_side is null or document_side in ('front', 'back', 'selfie_1', 'selfie_2', 'selfie_3', 'selfie_4', 'selfie_5', 'selfie_6'));
+
 create table if not exists public.appointments (
   id uuid primary key default gen_random_uuid(),
   application_id uuid not null references public.applications(id) on delete cascade,
@@ -135,6 +159,7 @@ create table if not exists public.appointments (
   branch_name text,
   governorate text,
   scheduled_at timestamptz,
+  appointment_slot text,
   status text not null default 'requested',
   cancellation_deadline date,
   created_at timestamptz not null default now(),
@@ -142,6 +167,9 @@ create table if not exists public.appointments (
   constraint appointments_method_check check (method in ('ebranch', 'branch', 'employee_visit')),
   constraint appointments_status_check check (status in ('requested', 'scheduled', 'completed', 'missed', 'cancelled'))
 );
+
+alter table public.appointments
+  add column if not exists appointment_slot text;
 
 create table if not exists public.consent_records (
   id uuid primary key default gen_random_uuid(),
@@ -195,6 +223,7 @@ create index if not exists idx_applicant_profiles_email_hash on public.applicant
 create index if not exists idx_otp_challenges_application_channel on public.otp_challenges(application_id, channel);
 create index if not exists idx_identity_documents_application on public.identity_documents(application_id);
 create index if not exists idx_document_requirements_application on public.document_requirements(application_id);
+create index if not exists idx_application_uploads_application_current on public.application_uploads(application_id, is_current);
 create index if not exists idx_appointments_application on public.appointments(application_id);
 create index if not exists idx_status_events_application_created on public.status_events(application_id, created_at desc);
 create index if not exists idx_audit_events_application_created on public.audit_events(application_id, created_at desc);

@@ -15,7 +15,153 @@ import {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'
 
-export function CrmDashboard({ onBackToForm }) {
+const crmFieldSections = [
+  {
+    title: 'Identity & KYC Details',
+    fields: [
+      ['firstNameAr', 'First name in Arabic'],
+      ['middleNameAr', 'Middle name in Arabic'],
+      ['lastNameAr', 'Last name in Arabic'],
+      ['gender', 'Gender'],
+      ['nationalIdIssueDate', 'National ID issue date'],
+      ['nationalIdExpiryDate', 'National ID expiry date'],
+      ['nationalIdCardPrintedNumber', 'ID card printed number'],
+      ['placeOfBirth', 'Place of birth'],
+      ['idResidenceAddressAr', 'ID residence address'],
+      ['hasSpecialNeeds', 'Special needs declaration'],
+      ['hasOtherNationality', 'Other nationality'],
+      ['hasResidencyInOtherCountry', 'Foreign residency rights'],
+    ],
+  },
+  {
+    title: 'Correspondence & Social Profile',
+    fields: [
+      ['correspondenceAddressSource', 'Correspondence address'],
+      ['correspondenceLanguage', 'Correspondence language'],
+      ['landlineNumber', 'Landline'],
+      ['deliveryMethod', 'Delivery method'],
+      ['maritalStatus', 'Marital status'],
+      ['numberOfDependents', 'Dependents'],
+      ['housingNature', 'Housing nature'],
+      ['rentalType', 'Rental type'],
+      ['educationStatus', 'Education status'],
+    ],
+  },
+  {
+    title: 'Employment & Account Setup',
+    fields: [
+      ['employmentNature', 'Employment nature'],
+      ['employerName', 'Employer name'],
+      ['employmentStartDate', 'Employment start date'],
+      ['employerAddress', 'Employer address'],
+      ['monthlySalary', 'Monthly salary'],
+      ['isOrWasPep', 'PEP declaration'],
+      ['employmentStatus', 'Employment status'],
+      ['jobGrade', 'Job grade'],
+      ['employerPhone', 'Employer phone'],
+      ['currentPosition', 'Current position'],
+      ['annualIncomeBracket', 'Annual income bracket'],
+      ['accountType', 'Account type'],
+      ['accountCurrency', 'Account currency'],
+      ['accountOpeningPurposeAr', 'Account purpose in Arabic'],
+      ['statementFrequency', 'Statement frequency'],
+      ['statementDeliveryAddress', 'Statement delivery address'],
+      ['accountTransactionTypes', 'Transaction types'],
+      ['cardPrintedName', 'Card printed name'],
+      ['smsAlertSubscription', 'SMS alerts'],
+      ['secureCodeSubscription', 'Secure code'],
+      ['isBeneficialOwner', 'Beneficial owner'],
+      ['hasOtherBankAccountsOrCards', 'Other bank accounts/cards'],
+    ],
+  },
+]
+
+function formatCrmValue(value) {
+  if (Array.isArray(value)) return value.length ? value.join(', ') : 'N/A'
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  if (value === null || value === undefined || value === '') return 'N/A'
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function formatFileSize(bytes) {
+  if (!bytes) return '0 KB'
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function documentTitle(document) {
+  if (document.document_type === 'national_id') {
+    return `National ID ${document.document_side || 'image'}`
+  }
+  if (document.document_type === 'face_selfie') {
+    return `Face capture ${String(document.document_side || '').replace('selfie_', '') || 'frame'}`
+  }
+  if (document.document_type === 'employment_hr_letter') return 'Employment HR letter'
+  return 'Supporting document'
+}
+
+function DocumentPreviewImage({ document }) {
+  const [previewUrl, setPreviewUrl] = useState('')
+  const [failed, setFailed] = useState(false)
+  const imageUrl = `${API_BASE_URL}${document.view_url}`
+  const title = documentTitle(document)
+
+  useEffect(() => {
+    let isMounted = true
+    let objectUrl = ''
+
+    const loadPreview = async () => {
+      setFailed(false)
+      setPreviewUrl('')
+
+      try {
+        const response = await fetch(imageUrl)
+        if (!response.ok) throw new Error('Preview image failed to load.')
+
+        const blob = await response.blob()
+        objectUrl = URL.createObjectURL(blob)
+        if (isMounted) setPreviewUrl(objectUrl)
+      } catch (error) {
+        console.error('Failed to load document preview', error)
+        if (isMounted) setFailed(true)
+      }
+    }
+
+    loadPreview()
+
+    return () => {
+      isMounted = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [imageUrl])
+
+  if (failed) {
+    return (
+      <span style={{ display: 'grid', placeItems: 'center', width: '100%', height: '100%', color: '#60706a', fontSize: '11px', textAlign: 'center', padding: '8px' }}>
+        Preview unavailable
+      </span>
+    )
+  }
+
+  if (!previewUrl) {
+    return (
+      <span style={{ display: 'grid', placeItems: 'center', width: '100%', height: '100%', color: '#60706a', fontSize: '11px' }}>
+        Loading...
+      </span>
+    )
+  }
+
+  return (
+    <img
+      src={previewUrl}
+      alt={title}
+      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+    />
+  )
+}
+
+export function CrmDashboard({ onBackToForm = () => {}, onLogout = () => {}, currentOfficer = null }) {
   const [applications, setApplications] = useState([])
   const [statusFilter, setStatusFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
@@ -23,6 +169,9 @@ export function CrmDashboard({ onBackToForm }) {
   const [selectedDetails, setSelectedDetails] = useState(null)
   const [loading, setLoading] = useState(false)
   const [modalLoading, setModalLoading] = useState(false)
+  const officerName = currentOfficer?.name || 'Staff Officer'
+  const selectedFields = selectedDetails?.application?.onboarding_fields || {}
+  const selectedDocuments = selectedDetails?.documents || []
 
   const fetchApplications = async () => {
     setLoading(true)
@@ -31,7 +180,11 @@ export function CrmDashboard({ onBackToForm }) {
         `${API_BASE_URL}/api/crm/applications?status=${statusFilter}&search=${encodeURIComponent(searchQuery)}`
       )
       const json = await res.json()
-      if (json.success) setApplications(json.data || [])
+      if (json && json.success) {
+        setApplications(json.data || [])
+      } else {
+        setApplications([])
+      }
     } catch (err) {
       console.error('Failed to load CRM applications', err)
     } finally {
@@ -64,8 +217,8 @@ export function CrmDashboard({ onBackToForm }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status: newStatus,
-          officerName: 'Senior_Branch_Manager',
-          notes: `Marked as ${newStatus.toUpperCase()} via Operations CRM Console.`,
+          officerName,
+          notes: `Status changed to ${newStatus.toUpperCase()} by ${officerName}.`,
           rejectionReason: reason,
         }),
       })
@@ -88,15 +241,30 @@ export function CrmDashboard({ onBackToForm }) {
             <h1 style={{ fontSize: '26px', color: '#10281f', margin: 0 }}>NBE Operations & Case CRM</h1>
           </div>
           <p style={{ margin: '4px 0 0', color: '#60706a', fontSize: '14px' }}>
-            Retail Banking Customer Onboarding & KYC Back-Office Management
+            Logged in as: <strong style={{ color: '#006643' }}>{officerName}</strong>
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <button className="button button-secondary" onClick={fetchApplications} title="Refresh records">
             <RefreshCw size={16} /> Refresh
           </button>
-          <button className="button button-primary" onClick={onBackToForm}>
+          <button className="button button-secondary" onClick={onBackToForm}>
             Applicant Portal
+          </button>
+          <button
+            onClick={onLogout}
+            style={{
+              backgroundColor: '#fee2e2',
+              color: '#991b1b',
+              border: '1px solid #fca5a5',
+              padding: '8px 14px',
+              borderRadius: '6px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              fontSize: '13px',
+            }}
+          >
+            Log Out
           </button>
         </div>
       </div>
@@ -185,12 +353,17 @@ export function CrmDashboard({ onBackToForm }) {
                   <div style={{ color: '#60706a', fontSize: '11px' }}>Step: {app.current_step}</div>
                 </td>
                 <td style={{ padding: '14px 18px' }}>
-                  <div>{app.mobile_hash || '—'}</div>
-                  <small style={{ color: '#60706a' }}>{app.email_hash || '—'}</small>
+                  <div>{app.mobile_hash || 'N/A'}</div>
+                  <small style={{ color: '#60706a' }}>{app.email_hash || 'N/A'}</small>
                 </td>
-                <td style={{ padding: '14px 18px' }}>{app.governorate || '—'}</td>
+                <td style={{ padding: '14px 18px' }}>{app.governorate || 'N/A'}</td>
                 <td style={{ padding: '14px 18px', textTransform: 'capitalize' }}>
                   {app.fulfillment_method || 'Branch'}
+                  {app.selected_branch && (
+                    <div style={{ color: '#60706a', fontSize: '11px', textTransform: 'none' }}>
+                      {app.selected_branch}
+                    </div>
+                  )}
                 </td>
                 <td style={{ padding: '14px 18px' }}>
                   <span
@@ -323,13 +496,91 @@ export function CrmDashboard({ onBackToForm }) {
                   {/* Summary Profile Grid */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '24px', background: '#f8faf9', padding: '16px', borderRadius: '8px' }}>
                     <div><strong>Name:</strong> {selectedDetails.application.first_name} {selectedDetails.application.last_name}</div>
-                    <div><strong>National ID:</strong> {selectedDetails.application.national_id_hash || '—'}</div>
-                    <div><strong>DOB:</strong> {selectedDetails.application.date_of_birth ? selectedDetails.application.date_of_birth.split('T')[0] : '—'}</div>
-                    <div><strong>Governorate:</strong> {selectedDetails.application.governorate || '—'}</div>
-                    <div><strong>Mobile:</strong> {selectedDetails.application.mobile_hash || '—'}</div>
-                    <div><strong>Email:</strong> {selectedDetails.application.email_hash || '—'}</div>
-                    <div><strong>Employment:</strong> {selectedDetails.application.employment_status || '—'}</div>
-                    <div><strong>Monthly Income:</strong> {selectedDetails.application.income_range || '—'}</div>
+                    <div><strong>National ID:</strong> {selectedDetails.application.national_id_hash || 'N/A'}</div>
+                    <div><strong>DOB:</strong> {selectedDetails.application.date_of_birth ? selectedDetails.application.date_of_birth.split('T')[0] : 'N/A'}</div>
+                    <div><strong>Governorate:</strong> {selectedDetails.application.governorate || 'N/A'}</div>
+                    <div><strong>Mobile:</strong> {selectedDetails.application.mobile_hash || 'N/A'}</div>
+                    <div><strong>Email:</strong> {selectedDetails.application.email_hash || 'N/A'}</div>
+                    <div><strong>Employment:</strong> {selectedDetails.application.employment_status || 'N/A'}</div>
+                    <div><strong>Monthly Income:</strong> {selectedDetails.application.income_range || 'N/A'}</div>
+                    <div><strong>Selected Branch:</strong> {selectedDetails.application.selected_branch || 'N/A'}</div>
+                    <div>
+                      <strong>Appointment:</strong>{' '}
+                      {selectedDetails.application.appointment_date
+                        ? `${selectedDetails.application.appointment_date.split('T')[0]} · ${selectedDetails.application.appointment_slot || 'Standard Slot'}`
+                        : 'N/A'}
+                    </div>
+                  </div>
+
+                  {selectedFields.faceVerification && (
+                    <div style={{ marginBottom: '24px', background: '#f0faf5', border: '1px solid #9ccbb8', borderRadius: '8px', padding: '14px 16px' }}>
+                      <h3 style={{ fontSize: '16px', color: '#006643', margin: '0 0 10px' }}>Face Verification</h3>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '13px' }}>
+                        <div><strong>Status:</strong> {formatCrmValue(selectedFields.faceVerification.status)}</div>
+                        <div><strong>Best similarity:</strong> {selectedFields.faceVerification.bestSimilarity !== undefined ? `${selectedFields.faceVerification.bestSimilarity}%` : 'N/A'}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {crmFieldSections.map((section) => (
+                    <div key={section.title} style={{ marginBottom: '24px' }}>
+                      <h3 style={{ fontSize: '16px', color: '#006643', margin: '0 0 12px' }}>{section.title}</h3>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 14px', background: '#fbfcfc', border: '1px solid #edf2f0', borderRadius: '8px', padding: '14px', fontSize: '12px' }}>
+                        {section.fields.map(([key, label]) => (
+                          <div key={key}>
+                            <span style={{ display: 'block', color: '#60706a', fontSize: '11px' }}>{label}</span>
+                            <strong style={{ overflowWrap: 'anywhere' }}>{formatCrmValue(selectedFields[key])}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+
+                  <div style={{ marginBottom: '24px' }}>
+                    <h3 style={{ fontSize: '16px', color: '#006643', margin: '0 0 12px' }}>Uploaded Documents</h3>
+                    {selectedDocuments.length > 0 ? (
+                      <div style={{ display: 'grid', gap: '10px' }}>
+                        {selectedDocuments.map((document) => (
+                          <div key={document.id} style={{ display: 'grid', gridTemplateColumns: document.mime_type?.startsWith('image/') ? '112px minmax(0, 1fr) auto' : 'minmax(0, 1fr) auto', alignItems: 'center', gap: '12px', border: '1px solid #dce4e0', borderRadius: '8px', padding: '12px 14px', background: '#ffffff' }}>
+                            {document.mime_type?.startsWith('image/') && (
+                              <a href={`${API_BASE_URL}${document.view_url}`} target="_blank" rel="noreferrer" style={{ display: 'block', width: '112px', aspectRatio: '4 / 3', overflow: 'hidden', borderRadius: '6px', border: '1px solid #dce4e0', background: '#f4f7f6' }}>
+                                <DocumentPreviewImage document={document} />
+                              </a>
+                            )}
+                            <div style={{ minWidth: 0 }}>
+                              <strong style={{ display: 'block', color: '#10281f' }}>{documentTitle(document)}</strong>
+                              <span style={{ display: 'block', color: '#60706a', fontSize: '12px', overflowWrap: 'anywhere' }}>
+                                {document.original_name} · {formatFileSize(document.file_size)}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                              {document.mime_type?.startsWith('image/') && (
+                                <a
+                                  className="button button-secondary"
+                                  href={`${API_BASE_URL}${document.view_url}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}
+                                >
+                                  View
+                                </a>
+                              )}
+                            <a
+                              className="button button-secondary"
+                              href={`${API_BASE_URL}${document.download_url}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}
+                            >
+                              Download
+                            </a>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p style={{ color: '#889892', fontSize: '12px' }}>No uploaded documents are attached to this application yet.</p>
+                    )}
                   </div>
 
                   {/* Audit Trail Timeline */}
@@ -376,3 +627,4 @@ export function CrmDashboard({ onBackToForm }) {
     </div>
   )
 }
+
