@@ -2,9 +2,6 @@
 
 A full-stack prototype for a bilingual National Bank of Egypt account-opening journey. It combines guided onboarding, Egyptian National ID OCR, selfie-to-ID face comparison, mobile and email verification, appointment booking, progress recovery, and an internal CRM review experience.
 
-> [!IMPORTANT]
-> This is a demonstration/prototype, not a production banking system. The current authentication, OTP, PII storage, liveness, and authorization controls require production hardening; see [Prototype limitations](#prototype-limitations).
-
 ## What the project includes
 
 ### Applicant experience
