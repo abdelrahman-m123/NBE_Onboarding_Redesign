@@ -1,21 +1,21 @@
-import { execFile } from 'node:child_process'
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import fs from 'node:fs/promises'
-import os from 'node:os'
 import path from 'node:path'
+import { performance } from 'node:perf_hooks'
+import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
-import { promisify } from 'node:util'
-import { Injectable } from '@nestjs/common'
+import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common'
 import sharp from 'sharp'
 import { logger } from '../../common/logger.js'
 import type { OcrService } from './ocr.interface.js'
-import { extractNationalIdFieldsFromText, recognizeNationalId, testOnly } from './ocr.js'
+import { extractNationalIdFieldsFromText, testOnly } from './ocr.js'
 
-const execFileAsync = promisify(execFile)
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
-const compiledRunnerPath = path.join(currentDir, 'paddle_ocr_runner.py')
-const sourceRunnerPath = path.join(process.cwd(), 'server', 'identity-verification', 'ocr', 'paddle_ocr_runner.py')
+const compiledWorkerPath = path.join(currentDir, 'paddle_ocr_worker.py')
+const sourceWorkerPath = path.join(process.cwd(), 'server', 'identity-verification', 'ocr', 'paddle_ocr_worker.py')
 const defaultPaddleCacheDir = path.join(process.cwd(), '.paddle-cache')
-let paddleRunQueue = Promise.resolve()
+const defaultPaddleMaxDimension = 960
+let paddleRequestId = 0
 
 interface PaddleLine {
   text: string
@@ -25,6 +25,25 @@ interface PaddleLine {
 
 interface PositionedLine extends PaddleLine {
   bounds: { left: number; top: number; right: number; bottom: number }
+}
+
+interface PendingPaddleRequest {
+  imageData: string // base64-encoded PNG sent via stdin — no temp file I/O
+  resolve: (value: { lines: PaddleLine[] }) => void
+  reject: (error: Error) => void
+  timer: NodeJS.Timeout
+  enqueuedAt: number
+  worker?: PaddleWorker
+}
+
+interface PaddleWorker {
+  id: number
+  process: ChildProcessWithoutNullStreams
+  stdout: readline.Interface
+  ready: Promise<void>
+  busy: boolean
+  currentRequestId?: string
+  device: 'cpu' | 'gpu' | 'auto'
 }
 
 const arabicDigitMap = '٠١٢٣٤٥٦٧٨٩'
@@ -44,35 +63,109 @@ function containsArabic(value: string) {
   return /[\u0600-\u06ff]/.test(value)
 }
 
-async function withPaddleRunLock<T>(task: () => Promise<T>) {
-  const previousRun = paddleRunQueue
-  let releaseCurrentRun!: () => void
-  paddleRunQueue = new Promise<void>((resolve) => {
-    releaseCurrentRun = resolve
-  })
-
-  await previousRun.catch(() => undefined)
-  try {
-    return await task()
-  } finally {
-    releaseCurrentRun()
-  }
-}
-
 @Injectable()
-export class PaddleOcrService implements OcrService {
+export class PaddleOcrService implements OcrService, OnModuleDestroy, OnModuleInit {
+  private workers: PaddleWorker[] = []
+  private workersReady: Promise<void> | null = null
+  private workerPoolStarting: Promise<void> | null = null
+  private pendingRequests = new Map<string, PendingPaddleRequest>()
+  private queuedRequestIds: string[] = []
+  private workerPath: string | null = null
+  private workerEnvPaths: { paddleHome: string; paddlexCacheHome: string; xdgCacheHome: string } | null = null
+  private stoppingWorkerPool = false
+  
+  // Dual pool support
+  private cpuWorkers: PaddleWorker[] = []
+  private gpuWorkers: PaddleWorker[] = []
+  private cpuWorkersReady: Promise<void> | null = null
+  private gpuWorkersReady: Promise<void> | null = null
+  private cpuWorkerPoolStarting: Promise<void> | null = null
+  private gpuWorkerPoolStarting: Promise<void> | null = null
+  private cpuPendingRequests = new Map<string, PendingPaddleRequest>()
+  private gpuPendingRequests = new Map<string, PendingPaddleRequest>()
+  private cpuQueuedRequestIds: string[] = []
+  private gpuQueuedRequestIds: string[] = []
+  private dualPoolEnabled = false
+
+  onModuleInit() {
+    if (process.env.PADDLE_OCR_PREWARM === '0') return
+
+    // Check if dual pool mode is enabled
+    this.dualPoolEnabled = process.env.PADDLE_OCR_DUAL_POOL === 'true'
+    
+    if (this.dualPoolEnabled) {
+      // Prewarm both CPU and GPU pools
+      void Promise.all([
+        this.ensureCpuWorkerPool().catch((error) => {
+          logger.error('paddleocr.cpu_worker_pool.prewarm_failed', { error })
+        }),
+        this.ensureGpuWorkerPool().catch((error) => {
+          logger.error('paddleocr.gpu_worker_pool.prewarm_failed', { error })
+        }),
+      ])
+    } else {
+      void this.ensureWorkerPool().catch((error) => {
+        logger.error('paddleocr.worker_pool.prewarm_failed', { error })
+      })
+    }
+  }
+
+  enableDualPool() {
+    this.dualPoolEnabled = true
+  }
+
+  disableDualPool() {
+    this.dualPoolEnabled = false
+  }
+
+  onModuleDestroy() {
+    this.stopWorkerPool()
+    this.stopCpuWorkerPool()
+    this.stopGpuWorkerPool()
+  }
+
   async recognizeNationalId(buffer: Buffer) {
     return this.recognizeSide(buffer, 'unknown')
   }
 
-  async recognizeNationalIdImages(images: { front?: Buffer; back?: Buffer; guide?: Buffer }) {
+  async recognizeNationalIdImages(images: { front?: Buffer; back?: Buffer }, device: 'cpu' | 'gpu' | 'both' | 'auto' = 'auto') {
+    if (device === 'both') {
+      // Run both CPU and GPU in parallel
+      const [cpuResult, gpuResult] = await Promise.allSettled([
+        this.recognizeSidesWithDevice(images, 'cpu'),
+        this.recognizeSidesWithDevice(images, 'gpu'),
+      ])
+      
+      const cpuData = cpuResult.status === 'fulfilled' ? cpuResult.value : null
+      const gpuData = gpuResult.status === 'fulfilled' ? gpuResult.value : null
+      
+      // For dual mode, we return a special structure that includes both results
+      // but also has fallback fields for compatibility
+      return {
+        mode: 'dual',
+        cpuResult: cpuData,
+        gpuResult: gpuData,
+        // Fallback to GPU result if available, otherwise CPU
+        status: (gpuData?.status || cpuData?.status || 'partial'),
+        confidence: (gpuData?.confidence ?? cpuData?.confidence ?? 0),
+        extracted: (gpuData?.extracted ?? cpuData?.extracted ?? null),
+        method: 'paddleocr-arabic',
+        sides: gpuData?.sides ?? cpuData?.sides ?? undefined,
+        device: 'both',
+      }
+    }
+    
+    // Single device run
+    const targetDevice = device === 'auto' ? ((process.env.PADDLE_OCR_DEVICE as 'cpu' | 'gpu' | 'auto') || 'auto') : device
+    const result = await this.recognizeSidesWithDevice(images, targetDevice)
+    return result
+  }
+
+  private async recognizeSidesWithDevice(images: { front?: Buffer; back?: Buffer }, device: 'cpu' | 'gpu' | 'auto') {
     const [front, back] = await Promise.all([
-      images.front ? this.recognizeSide(images.front, 'front') : null,
-      images.back ? this.recognizeSide(images.back, 'back') : null,
+      images.front ? this.recognizeSideWithDevice(images.front, 'front', device) : null,
+      images.back ? this.recognizeSideWithDevice(images.back, 'back', device) : null,
     ])
-    const guide = images.guide
-      ? { status: 'reference-only', confidence: 0, extracted: null, method: 'guide-reference' }
-      : null
 
     const extracted = this.mergeExtractedFields([front?.extracted, back?.extracted])
     const reconciledNationalId = this.reconcileNationalId(front?.extracted?.nationalId, back?.extracted?.nationalId)
@@ -91,146 +184,476 @@ export class PaddleOcrService implements OcrService {
       confidence,
       extracted: Object.keys(extracted).length ? extracted : null,
       method: 'paddleocr-arabic',
-      sides: { front, back, guide },
+      sides: { front, back },
+      device: device === 'auto' ? (process.env.PADDLE_OCR_DEVICE || 'auto') : device,
     }
   }
 
   private async recognizeSide(buffer: Buffer, side: string) {
-    const metadata = await sharp(buffer, { failOn: 'none' }).metadata()
-    const isLandscape = (metadata.width || 0) >= (metadata.height || 0)
-    const primaryRotations = isLandscape ? [0, 270] : [270, 0]
-    const rotations = side === 'unknown' ? [...primaryRotations, 90, 180] : primaryRotations
-    const results = []
-
-    for (const rotation of rotations) {
-      const rotated = await sharp(buffer, { failOn: 'none' }).rotate().rotate(rotation).png().toBuffer()
-      const segmented = await testOnly.extractSegmentedNationalId(rotated)
-      const paddleResult = await this.runPaddle(rotated)
-      const initialSideDetails = this.extractSideDetails(paddleResult.lines, side)
-      const needsFocusedBackRead = side === 'back' && (!initialSideDetails.religion || !initialSideDetails.nationalIdExpiryDate)
-      const focusedBackLines = needsFocusedBackRead ? await this.readFocusedBackLines(rotated) : []
-      const lines = this.mergeOcrLines([...paddleResult.lines, ...focusedBackLines])
-      const text = lines.map((line) => line.text).join('\n')
-      const rawTextExtracted = extractNationalIdFieldsFromText(text)
-      const textExtracted = side === 'front' || side === 'unknown'
-        ? rawTextExtracted
-        : Object.fromEntries(Object.entries(rawTextExtracted).filter(([key]) => !['name', 'address'].includes(key)))
-      const sideDetails = this.extractSideDetails(lines, side)
-      const extracted = this.mergeExtractedFields([segmented, sideDetails, textExtracted])
-      if (extracted.nationalId) {
-        extracted.placeOfBirth = extracted.governorate
-        extracted.gender ||= Number(String(extracted.nationalId)[12]) % 2 === 0 ? 'Female' : 'Male'
-      }
-      const confidence = Math.round(Math.max(segmented ? 82 : 0, this.averageConfidence(paddleResult.lines)))
-
-      results.push({
-        status: extracted.nationalId ? 'completed' : Object.keys(extracted).length ? 'partial' : 'partial',
-        confidence,
-        extracted: Object.keys(extracted).length ? extracted : null,
-        method: segmented ? 'paddleocr-arabic+segmented-digit-line' : 'paddleocr-arabic',
-        rotation,
-        lines: this.summarizeLines(lines),
-      })
-
-      const hasCompleteFront = side === 'front' && Boolean(sideDetails.name && sideDetails.address && extracted.nationalIdCardPrintedNumber)
-      const hasCompleteBack = side === 'back' && Boolean(extracted.nationalId && (sideDetails.gender || sideDetails.nationalIdExpiryDate))
-      if (hasCompleteFront || hasCompleteBack || (extracted.nationalId && (textExtracted.name || textExtracted.address))) break
-    }
-
-    const best = results.sort((first, second) => {
-      const firstHasId = first.extracted?.nationalId ? 1 : 0
-      const secondHasId = second.extracted?.nationalId ? 1 : 0
-      if (firstHasId !== secondHasId) return secondHasId - firstHasId
-      return second.confidence - first.confidence
-    })[0]
-
-    if (best) return best
-
-    logger.warn('paddleocr.empty_result', { side })
-    return recognizeNationalId(buffer)
+    return this.recognizeSideWithDevice(buffer, side, (process.env.PADDLE_OCR_DEVICE as 'cpu' | 'gpu' | 'auto') || 'auto')
   }
 
-  private async readFocusedBackLines(buffer: Buffer): Promise<PaddleLine[]> {
-    const metadata = await sharp(buffer, { failOn: 'none' }).metadata()
-    const width = metadata.width || 0
-    const height = metadata.height || 0
-    if (!width || !height) return []
+  private async recognizeSideWithDevice(buffer: Buffer, side: string, device: 'cpu' | 'gpu' | 'auto') {
+    const normalized = await sharp(buffer, { failOn: 'none' }).rotate().png().toBuffer()
+    const paddleInput = await this.preparePaddleInput(normalized, side)
+    const paddleResult = await this.runPaddleWithDevice(paddleInput, device)
+    const lines = this.mergeOcrLines(paddleResult.lines)
+    const text = lines.map((line) => line.text).join('\n')
+    const rawTextExtracted = extractNationalIdFieldsFromText(text)
+    const textExtracted = side === 'front' || side === 'unknown'
+      ? rawTextExtracted
+      : Object.fromEntries(Object.entries(rawTextExtracted).filter(([key]) => !['name', 'address'].includes(key)))
+    const sideDetails = this.extractSideDetails(lines, side)
+    const extracted = this.mergeExtractedFields([sideDetails, textExtracted])
+    if (extracted.nationalId) {
+      extracted.placeOfBirth = extracted.governorate
+      extracted.gender ||= Number(String(extracted.nationalId)[12]) % 2 === 0 ? 'Female' : 'Male'
+    }
+    const confidence = Math.round(this.averageConfidence(paddleResult.lines))
 
-    const cropConfigs = [
-      { left: 0.22, top: 0.28, width: 0.58, height: 0.35 },
-      { left: 0.38, top: 0.34, width: 0.26, height: 0.22 },
-    ]
-    const focusedLines: PaddleLine[] = []
+    return {
+      status: extracted.nationalId ? 'completed' : 'partial',
+      confidence,
+      extracted: Object.keys(extracted).length ? extracted : null,
+      method: 'paddleocr-arabic',
+      lines: this.summarizeLines(lines),
+    }
+  }
 
-    for (const config of cropConfigs) {
-      const left = Math.max(0, Math.floor(width * config.left))
-      const top = Math.max(0, Math.floor(height * config.top))
-      const cropWidth = Math.min(width - left, Math.floor(width * config.width))
-      const cropHeight = Math.min(height - top, Math.floor(height * config.height))
-      if (cropWidth <= 0 || cropHeight <= 0) continue
+  private async preparePaddleInput(buffer: Buffer, side: string) {
+    const maxDimension = Math.max(640, Number(process.env.PADDLE_OCR_MAX_DIMENSION || defaultPaddleMaxDimension))
+    const trimThreshold = Number(process.env.PADDLE_OCR_TRIM_THRESHOLD || 18)
 
-      const crop = await sharp(buffer, { failOn: 'none' })
-        .extract({ left, top, width: cropWidth, height: cropHeight })
-        .resize({ width: 1800, withoutEnlargement: false })
+    if (side !== 'back') {
+      // Front / unknown: single Sharp pipeline — trim, resize, and enhance in one encode/decode pass
+      return sharp(buffer, { failOn: 'none' })
+        .trim({ background: '#ffffff', threshold: trimThreshold })
+        .resize({ width: maxDimension, height: maxDimension, fit: 'inside', withoutEnlargement: true })
         .grayscale()
         .normalize()
         .sharpen()
         .png()
         .toBuffer()
-      const result = await this.runPaddle(crop)
-      focusedLines.push(...result.lines)
     }
 
-    return focusedLines
+    // Back: 2 passes — trim to get post-trim dimensions (needed for band crop), then crop + enhance.
+    // toBuffer({ resolveWithObject: true }) avoids a separate metadata() round-trip.
+    const { data: trimmed, info } = await sharp(buffer, { failOn: 'none' })
+      .trim({ background: '#ffffff', threshold: trimThreshold })
+      .png()
+      .toBuffer({ resolveWithObject: true })
+
+    const bandRatio = Number(process.env.PADDLE_OCR_BACK_TEXT_BAND_RATIO || 0.62)
+    const bandHeight = Math.max(1, Math.floor(info.height * bandRatio))
+
+    return sharp(trimmed, { failOn: 'none' })
+      .extract({ left: 0, top: 0, width: info.width, height: Math.min(bandHeight, info.height) })
+      .resize({ width: maxDimension, height: maxDimension, fit: 'inside', withoutEnlargement: true })
+      .grayscale()
+      .normalize()
+      .sharpen()
+      .png()
+      .toBuffer()
   }
 
   private async runPaddle(buffer: Buffer): Promise<{ lines: PaddleLine[] }> {
-    return withPaddleRunLock(async () => {
-      const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'nbe-paddle-ocr-'))
-      const imagePath = path.join(tempDir, 'input.png')
-      const paddleHome = process.env.PADDLE_OCR_HOME || defaultPaddleCacheDir
-      const paddlexCacheHome = process.env.PADDLE_PDX_CACHE_HOME || path.join(paddleHome, 'paddlex')
-      const xdgCacheHome = process.env.XDG_CACHE_HOME || path.join(paddleHome, 'xdg')
+    return this.runPaddleWithDevice(buffer, (process.env.PADDLE_OCR_DEVICE as 'cpu' | 'gpu' | 'auto') || 'auto')
+  }
 
-      try {
-        await fs.mkdir(paddlexCacheHome, { recursive: true })
-        await fs.mkdir(xdgCacheHome, { recursive: true })
-        await fs.writeFile(imagePath, buffer)
-        const runnerPath = await this.resolveRunnerPath()
-        const { stdout } = await execFileAsync(
-          process.env.PADDLE_OCR_PYTHON || 'python',
-          [runnerPath, imagePath],
-          {
-            env: {
-              ...process.env,
-              HOME: paddleHome,
-              USERPROFILE: paddleHome,
-              PADDLE_PDX_CACHE_HOME: paddlexCacheHome,
-              XDG_CACHE_HOME: xdgCacheHome,
-              PADDLE_OCR_DEVICE: process.env.PADDLE_OCR_DEVICE || 'auto',
-              FLAGS_use_mkldnn: process.env.FLAGS_use_mkldnn || '0',
-              FLAGS_use_onednn: process.env.FLAGS_use_onednn || '0',
-              PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: process.env.PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK || 'True',
-              PYTHONIOENCODING: process.env.PYTHONIOENCODING || 'utf-8',
-            },
-            maxBuffer: 8 * 1024 * 1024,
-            timeout: Number(process.env.PADDLE_OCR_TIMEOUT_MS || 120000),
-          },
-        )
-        const jsonStart = stdout.indexOf('{')
-        const payload = JSON.parse(jsonStart >= 0 ? stdout.slice(jsonStart) : stdout)
-        return { lines: Array.isArray(payload.lines) ? payload.lines : [] }
-      } catch (error) {
-        logger.error('paddleocr.failed', { error })
-        throw error
-      } finally {
-        await fs.rm(tempDir, { recursive: true, force: true })
-      }
+  private async runPaddleWithDevice(buffer: Buffer, device: 'cpu' | 'gpu' | 'auto'): Promise<{ lines: PaddleLine[] }> {
+    // Image is base64-encoded and piped directly to the Python worker via stdin.
+    // No temp directory, writeFile, or rm — eliminates all temp-file I/O overhead.
+    const startedAt = performance.now()
+    try {
+      return await this.requestPaddleWorkerWithDevice(buffer, device)
+    } catch (error) {
+      logger.error('paddleocr.failed', { device, error })
+      throw error
+    } finally {
+      logger.info('paddleocr.run_finished', {
+        device,
+        durationMs: Math.round(performance.now() - startedAt),
+        inputBytes: buffer.length,
+      })
+    }
+  }
+
+  private async requestPaddleWorker(buffer: Buffer): Promise<{ lines: PaddleLine[] }> {
+    return this.requestPaddleWorkerWithDevice(buffer, (process.env.PADDLE_OCR_DEVICE as 'cpu' | 'gpu' | 'auto') || 'auto')
+  }
+
+  private async requestPaddleWorkerWithDevice(buffer: Buffer, device: 'cpu' | 'gpu' | 'auto'): Promise<{ lines: PaddleLine[] }> {
+    if (device === 'auto') {
+      return this.requestFromPool(buffer, this.workers, this.workersReady, this.pendingRequests, this.queuedRequestIds, this.workerPoolStarting, this.ensureWorkerPool.bind(this), this.dispatchQueuedRequests.bind(this))
+    }
+    
+    // Use specific device pool
+    if (device === 'cpu') {
+      return this.requestFromPool(buffer, this.cpuWorkers, this.cpuWorkersReady, this.cpuPendingRequests, this.cpuQueuedRequestIds, this.cpuWorkerPoolStarting, this.ensureCpuWorkerPool.bind(this), this.dispatchCpuQueuedRequests.bind(this))
+    }
+    
+    if (device === 'gpu') {
+      return this.requestFromPool(buffer, this.gpuWorkers, this.gpuWorkersReady, this.gpuPendingRequests, this.gpuQueuedRequestIds, this.gpuWorkerPoolStarting, this.ensureGpuWorkerPool.bind(this), this.dispatchGpuQueuedRequests.bind(this))
+    }
+    
+    // Fallback to default (should not reach here with proper typing)
+    return this.requestFromPool(buffer, this.workers, this.workersReady, this.pendingRequests, this.queuedRequestIds, this.workerPoolStarting, this.ensureWorkerPool.bind(this), this.dispatchQueuedRequests.bind(this))
+  }
+
+  private async requestFromPool(
+    buffer: Buffer,
+    workers: PaddleWorker[],
+    workersReady: Promise<void> | null,
+    pendingRequests: Map<string, PendingPaddleRequest>,
+    queuedRequestIds: string[],
+    poolStarting: Promise<void> | null,
+    ensurePool: () => Promise<void>,
+    dispatchRequests: () => void,
+  ): Promise<{ lines: PaddleLine[] }> {
+    await ensurePool()
+
+    const id = String(++paddleRequestId)
+    const timeoutMs = Number(process.env.PADDLE_OCR_TIMEOUT_MS || 120000)
+
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingRequests.delete(id)
+        const index = queuedRequestIds.indexOf(id)
+        if (index > -1) queuedRequestIds.splice(index, 1)
+        const pendingWorker = pending.worker
+        if (pendingWorker) this.restartWorker(pendingWorker)
+        reject(new Error(`PaddleOCR worker timed out after ${timeoutMs}ms`))
+      }, timeoutMs)
+
+      const pending: PendingPaddleRequest = { imageData: buffer.toString('base64'), resolve, reject, timer, enqueuedAt: performance.now() }
+      pendingRequests.set(id, pending)
+      queuedRequestIds.push(id)
+      logger.info('paddleocr.job_queued', { id, queueDepth: queuedRequestIds.length })
+      dispatchRequests()
     })
   }
 
-  private async resolveRunnerPath() {
-    for (const candidate of [compiledRunnerPath, sourceRunnerPath]) {
+  private async ensureWorkerPool() {
+    if (this.workers.length && this.workersReady) return this.workersReady
+    if (this.workerPoolStarting) return this.workerPoolStarting
+
+    this.workerPoolStarting = this.startWorkerPool()
+    try {
+      await this.workerPoolStarting
+    } finally {
+      this.workerPoolStarting = null
+    }
+  }
+
+  private async ensureCpuWorkerPool() {
+    if (this.cpuWorkers.length && this.cpuWorkersReady) return this.cpuWorkersReady
+    if (this.cpuWorkerPoolStarting) return this.cpuWorkerPoolStarting
+
+    this.cpuWorkerPoolStarting = this.startDeviceWorkerPool('cpu')
+    try {
+      await this.cpuWorkerPoolStarting
+    } finally {
+      this.cpuWorkerPoolStarting = null
+    }
+  }
+
+  private async ensureGpuWorkerPool() {
+    if (this.gpuWorkers.length && this.gpuWorkersReady) return this.gpuWorkersReady
+    if (this.gpuWorkerPoolStarting) return this.gpuWorkerPoolStarting
+
+    this.gpuWorkerPoolStarting = this.startDeviceWorkerPool('gpu')
+    try {
+      await this.gpuWorkerPoolStarting
+    } finally {
+      this.gpuWorkerPoolStarting = null
+    }
+  }
+
+  private async startWorkerPool() {
+    this.stoppingWorkerPool = false
+    const workerPath = await this.resolveWorkerPath()
+    const paddleHome = process.env.PADDLE_OCR_HOME || defaultPaddleCacheDir
+    const paddlexCacheHome = process.env.PADDLE_PDX_CACHE_HOME || path.join(paddleHome, 'paddlex')
+    const xdgCacheHome = process.env.XDG_CACHE_HOME || path.join(paddleHome, 'xdg')
+    this.workerPath = workerPath
+    this.workerEnvPaths = { paddleHome, paddlexCacheHome, xdgCacheHome }
+    await fs.mkdir(paddlexCacheHome, { recursive: true })
+    await fs.mkdir(xdgCacheHome, { recursive: true })
+
+    // Default 4 workers: front + back run truly in parallel (each needs 1 worker), plus headroom
+    const workerCount = Math.max(1, Number(process.env.PADDLE_OCR_WORKERS || 4))
+    const device = (process.env.PADDLE_OCR_DEVICE as 'cpu' | 'gpu' | 'auto') || 'auto'
+    this.workers = Array.from({ length: workerCount }, (_item, index) =>
+      this.startWorker(index + 1, workerPath, paddleHome, paddlexCacheHome, xdgCacheHome, device),
+    )
+
+    this.workersReady = Promise.all(this.workers.map((worker) => worker.ready)).then(() => undefined)
+
+    try {
+      await this.workersReady
+      logger.info('paddleocr.worker_pool.ready', { workers: this.workers.length, device })
+    } catch (error) {
+      this.stopWorkerPool()
+      throw error
+    }
+  }
+
+  private async startDeviceWorkerPool(device: 'cpu' | 'gpu') {
+    const workerPath = await this.resolveWorkerPath()
+    const paddleHome = process.env.PADDLE_OCR_HOME || defaultPaddleCacheDir
+    const paddlexCacheHome = process.env.PADDLE_PDX_CACHE_HOME || path.join(paddleHome, 'paddlex')
+    const xdgCacheHome = process.env.XDG_CACHE_HOME || path.join(paddleHome, 'xdg')
+    
+    // Create device-specific cache directories
+    const deviceCacheHome = path.join(paddleHome, device)
+    const devicePaddlexCacheHome = path.join(deviceCacheHome, 'paddlex')
+    const deviceXdgCacheHome = path.join(deviceCacheHome, 'xdg')
+    
+    await fs.mkdir(devicePaddlexCacheHome, { recursive: true })
+    await fs.mkdir(deviceXdgCacheHome, { recursive: true })
+
+    // 2 workers per device pool for dual-run mode
+    const workerCount = Math.max(1, Number(process.env.PADDLE_OCR_WORKERS_PER_DEVICE || 2))
+    
+    if (device === 'cpu') {
+      this.cpuWorkers = Array.from({ length: workerCount }, (_item, index) =>
+        this.startWorker(index + 1, workerPath, deviceCacheHome, devicePaddlexCacheHome, deviceXdgCacheHome, device),
+      )
+      this.cpuWorkersReady = Promise.all(this.cpuWorkers.map((worker) => worker.ready)).then(() => undefined)
+
+      try {
+        await this.cpuWorkersReady
+        logger.info('paddleocr.cpu_worker_pool.ready', { workers: this.cpuWorkers.length })
+      } catch (error) {
+        this.stopCpuWorkerPool()
+        throw error
+      }
+    } else {
+      this.gpuWorkers = Array.from({ length: workerCount }, (_item, index) =>
+        this.startWorker(index + 1, workerPath, deviceCacheHome, devicePaddlexCacheHome, deviceXdgCacheHome, device),
+      )
+      this.gpuWorkersReady = Promise.all(this.gpuWorkers.map((worker) => worker.ready)).then(() => undefined)
+
+      try {
+        await this.gpuWorkersReady
+        logger.info('paddleocr.gpu_worker_pool.ready', { workers: this.gpuWorkers.length })
+      } catch (error) {
+        this.stopGpuWorkerPool()
+        throw error
+      }
+    }
+  }
+
+  private startWorker(id: number, workerPath: string, paddleHome: string, paddlexCacheHome: string, xdgCacheHome: string, device: 'cpu' | 'gpu' | 'auto' = 'auto'): PaddleWorker {
+    const child = spawn(process.env.PADDLE_OCR_PYTHON || 'python', [workerPath], {
+      env: {
+        ...process.env,
+        HOME: paddleHome,
+        USERPROFILE: paddleHome,
+        PADDLE_PDX_CACHE_HOME: paddlexCacheHome,
+        XDG_CACHE_HOME: xdgCacheHome,
+        PADDLE_OCR_DEVICE: device,
+        PADDLE_OCR_CPU_THREADS: process.env.PADDLE_OCR_CPU_THREADS || '2',
+        FLAGS_use_mkldnn: process.env.FLAGS_use_mkldnn || '1',
+        FLAGS_use_onednn: process.env.FLAGS_use_onednn || '1',
+        PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: process.env.PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK || 'True',
+        PYTHONIOENCODING: process.env.PYTHONIOENCODING || 'utf-8',
+      },
+    })
+
+    const stdout = readline.createInterface({ input: child.stdout })
+    const worker: PaddleWorker = {
+      id,
+      process: child,
+      stdout,
+      ready: Promise.resolve(),
+      busy: true,
+      device,
+    }
+
+    stdout.on('line', (line) => this.handleWorkerLine(worker, line))
+    child.stderr.on('data', (chunk) => logger.debug('paddleocr.worker.stderr', { workerId: id, message: String(chunk).trim() }))
+    child.on('exit', (code, signal) => {
+      logger.warn('paddleocr.worker.exited', { workerId: id, code, signal })
+      this.rejectWorkerRequest(worker, new Error(`PaddleOCR worker ${id} exited with code ${code ?? 'null'}`))
+      this.workers = this.workers.filter((candidate) => candidate !== worker)
+      this.replaceWorker(id)
+    })
+    child.on('error', (error) => {
+      logger.error('paddleocr.worker.error', { workerId: id, error })
+      this.rejectWorkerRequest(worker, error)
+      this.workers = this.workers.filter((candidate) => candidate !== worker)
+      this.replaceWorker(id)
+    })
+
+    worker.ready = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('PaddleOCR worker did not become ready in time')), Number(process.env.PADDLE_OCR_STARTUP_TIMEOUT_MS || 120000))
+      const checkReady = (line: string) => {
+        try {
+          const payload = JSON.parse(line)
+          if (payload.type !== 'ready') return
+          clearTimeout(timer)
+          stdout.off('line', checkReady)
+          worker.busy = false
+          logger.info('paddleocr.worker.ready', { workerId: id })
+          this.dispatchQueuedRequests()
+          resolve()
+        } catch (_error) {
+          return
+        }
+      }
+      stdout.on('line', checkReady)
+      child.once('error', (error) => {
+        clearTimeout(timer)
+        stdout.off('line', checkReady)
+        reject(error)
+      })
+      child.once('exit', (code) => {
+        clearTimeout(timer)
+        stdout.off('line', checkReady)
+        reject(new Error(`PaddleOCR worker exited before ready with code ${code ?? 'null'}`))
+      })
+    })
+
+    return worker
+  }
+
+  private dispatchQueuedRequests() {
+    this.dispatchRequestsForPool(this.workers, this.pendingRequests, this.queuedRequestIds)
+  }
+
+  private dispatchCpuQueuedRequests() {
+    this.dispatchRequestsForPool(this.cpuWorkers, this.cpuPendingRequests, this.cpuQueuedRequestIds)
+  }
+
+  private dispatchGpuQueuedRequests() {
+    this.dispatchRequestsForPool(this.gpuWorkers, this.gpuPendingRequests, this.gpuQueuedRequestIds)
+  }
+
+  private dispatchRequestsForPool(workers: PaddleWorker[], pendingRequests: Map<string, PendingPaddleRequest>, queuedRequestIds: string[]) {
+    for (const worker of workers) {
+      if (worker.busy || worker.process.stdin.destroyed) continue
+
+      const id = queuedRequestIds.shift()
+      if (!id) return
+
+      const pending = pendingRequests.get(id)
+      if (!pending) continue
+
+      worker.busy = true
+      worker.currentRequestId = id
+      pending.worker = worker
+      const queueWaitMs = Math.round(performance.now() - pending.enqueuedAt)
+      logger.info('paddleocr.job_started', { id, workerId: worker.id, device: worker.device, queueWaitMs, queueDepth: queuedRequestIds.length })
+      worker.process.stdin.write(`${JSON.stringify({ id, imageData: pending.imageData })}\n`, 'utf8', (error) => {
+        if (!error) return
+        this.rejectWorkerRequest(worker, error)
+      })
+    }
+  }
+
+  private handleWorkerLine(worker: PaddleWorker, line: string) {
+    let payload: { id?: string; lines?: PaddleLine[]; error?: string; type?: string }
+    try {
+      payload = JSON.parse(line)
+    } catch (_error) {
+      logger.debug('paddleocr.worker.stdout', { message: line })
+      return
+    }
+
+    if (payload.type === 'ready') return
+    if (!payload.id) return
+
+    const pending = this.pendingRequests.get(payload.id)
+    if (!pending) return
+
+    clearTimeout(pending.timer)
+    this.pendingRequests.delete(payload.id)
+    worker.busy = false
+    worker.currentRequestId = undefined
+    if (payload.error) pending.reject(new Error(payload.error))
+    else pending.resolve({ lines: Array.isArray(payload.lines) ? payload.lines : [] })
+    this.dispatchQueuedRequests()
+  }
+
+  private rejectWorkerRequest(worker: PaddleWorker, error: Error) {
+    if (!worker.currentRequestId) return
+    const pending = this.pendingRequests.get(worker.currentRequestId)
+    if (!pending) return
+
+    clearTimeout(pending.timer)
+    this.pendingRequests.delete(worker.currentRequestId)
+    pending.reject(error)
+    worker.busy = false
+    worker.currentRequestId = undefined
+    this.dispatchQueuedRequests()
+  }
+
+  private restartWorker(worker: PaddleWorker) {
+    worker.process.kill()
+  }
+
+  private replaceWorker(id: number) {
+    if (this.stoppingWorkerPool || !this.workerPath || !this.workerEnvPaths) return
+    const replacement = this.startWorker(
+      id,
+      this.workerPath,
+      this.workerEnvPaths.paddleHome,
+      this.workerEnvPaths.paddlexCacheHome,
+      this.workerEnvPaths.xdgCacheHome,
+    )
+    this.workers.push(replacement)
+  }
+
+  private rejectPendingRequests(error: Error) {
+    for (const id of [...this.pendingRequests.keys()]) {
+      const pending = this.pendingRequests.get(id)
+      if (!pending) continue
+      clearTimeout(pending.timer)
+      pending.reject(error)
+      this.pendingRequests.delete(id)
+    }
+    this.queuedRequestIds = []
+  }
+
+  private stopWorkerPool() {
+    const workers = this.workers
+    this.stoppingWorkerPool = true
+    this.workers = []
+    this.workersReady = null
+    for (const worker of workers) worker.process.kill()
+    this.rejectPendingRequests(new Error('PaddleOCR worker pool stopped'))
+  }
+
+  private stopCpuWorkerPool() {
+    const workers = this.cpuWorkers
+    this.cpuWorkers = []
+    this.cpuWorkersReady = null
+    for (const worker of workers) worker.process.kill()
+    this.rejectPendingRequestsForPool(this.cpuPendingRequests, this.cpuQueuedRequestIds, new Error('PaddleOCR CPU worker pool stopped'))
+  }
+
+  private stopGpuWorkerPool() {
+    const workers = this.gpuWorkers
+    this.gpuWorkers = []
+    this.gpuWorkersReady = null
+    for (const worker of workers) worker.process.kill()
+    this.rejectPendingRequestsForPool(this.gpuPendingRequests, this.gpuQueuedRequestIds, new Error('PaddleOCR GPU worker pool stopped'))
+  }
+
+  private rejectPendingRequestsForPool(pendingRequests: Map<string, PendingPaddleRequest>, queuedRequestIds: string[], error: Error) {
+    for (const id of [...pendingRequests.keys()]) {
+      const pending = pendingRequests.get(id)
+      if (!pending) continue
+      clearTimeout(pending.timer)
+      pending.reject(error)
+      pendingRequests.delete(id)
+    }
+    queuedRequestIds.length = 0
+  }
+
+  private async resolveWorkerPath() {
+    for (const candidate of [compiledWorkerPath, sourceWorkerPath]) {
       try {
         await fs.access(candidate)
         return candidate
@@ -239,7 +662,7 @@ export class PaddleOcrService implements OcrService {
       }
     }
 
-    throw new Error(`PaddleOCR runner not found. Checked: ${compiledRunnerPath}, ${sourceRunnerPath}`)
+    throw new Error(`PaddleOCR worker not found. Checked: ${compiledWorkerPath}, ${sourceWorkerPath}`)
   }
 
   private averageConfidence(lines: PaddleLine[]) {

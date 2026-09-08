@@ -8,7 +8,7 @@ export class TesseractOcrService implements OcrService {
     return recognizeNationalId(buffer)
   }
 
-  recognizeNationalIdImages(images: { front?: Buffer; back?: Buffer; guide?: Buffer }) {
+  recognizeNationalIdImages(images: { front?: Buffer; back?: Buffer }) {
     return recognizeNationalIdImages(images)
   }
 }

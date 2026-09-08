@@ -10,12 +10,18 @@ export interface OcrService {
   recognizeNationalIdImages(images: {
     front?: Buffer
     back?: Buffer
-    guide?: Buffer
-  }): Promise<{
+  }, device?: 'cpu' | 'gpu' | 'both' | 'auto'): Promise<{
     status: string
     confidence: number
     extracted: unknown
     method?: string
     sides?: unknown
+    device?: string
+    mode?: string
+    cpuResult?: any
+    gpuResult?: any
+    durationMs?: number
+    cpu?: any
+    gpu?: any
   }>
 }

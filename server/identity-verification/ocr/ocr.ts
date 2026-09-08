@@ -818,7 +818,7 @@ export function extractNationalIdFieldsFromText(text) {
 }
 
 async function recognizeNationalIdSide(buffer, side = 'unknown') {
-  const rotations = side === 'back' || side === 'guide'
+  const rotations = side === 'back'
     ? [0, 270]
     : side === 'front'
       ? [270, 0]
@@ -955,18 +955,16 @@ export async function recognizeNationalId(buffer, options: RecognizeNationalIdOp
 }
 
 export async function recognizeNationalIdImages(images) {
-  const [front, back, guide] = await Promise.all([
+  const [front, back] = await Promise.all([
     images.front ? recognizeNationalIdSide(images.front, 'front') : null,
     images.back ? recognizeNationalIdSide(images.back, 'back') : null,
-    images.guide ? recognizeNationalIdSide(images.guide, 'guide') : null,
   ])
 
   const extracted = mergeExtractedFields([
     front?.extracted,
     back?.extracted,
-    guide?.extracted,
   ])
-  const confidenceValues = [front, back, guide]
+  const confidenceValues = [front, back]
     .filter(Boolean)
     .map((item) => item.confidence || 0)
   const confidence = confidenceValues.length
@@ -981,7 +979,6 @@ export async function recognizeNationalIdImages(images) {
     sides: {
       front,
       back,
-      guide,
     },
   }
 }

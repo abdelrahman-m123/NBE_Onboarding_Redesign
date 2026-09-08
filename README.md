@@ -37,7 +37,9 @@ flowchart LR
     API --> DB[(PostgreSQL)]
     API --> Files[Local application uploads]
     API --> OCR[OCR orchestrator]
-    OCR --> Paddle[Python PaddleOCR - Arabic]
+    OCR --> Queue[In-process OCR job queue]
+    Queue --> Workers[PaddleOCR worker pool]
+    Workers --> Paddle[Python PaddleOCR - Arabic]
     OCR --> Image[Sharp preprocessing and ID segmentation]
     OCR -. alternative service .-> Tess[Tesseract.js]
     API --> Rekognition[AWS Rekognition]
@@ -68,10 +70,26 @@ The active OCR provider is `PaddleOcrService`, registered behind the `OCR_SERVIC
 1. The React identity step sends `frontImage` and `backImage` as multipart data to `POST /api/identity/ocr/full`.
 2. Multer keeps scan files in memory, accepts common image formats, and limits each file to 6 MB.
 3. The server examines each image with Sharp, applies EXIF autorotation, and tries orientation candidates. Landscape images start with `0°` and `270°`; portrait images start with `270°` and `0°`.
-4. A temporary PNG is passed to `paddle_ocr_runner.py`. PaddleOCR runs with `lang="ar"` and returns recognized text, confidence, and bounding boxes as UTF-8 JSON.
-5. The Python runner automatically selects CUDA when the installed Paddle build supports it; otherwise it uses the CPU. Node serializes Paddle runs to avoid overlapping model executions, uses a configurable 120-second timeout, and removes each temporary directory afterward.
-6. Positioned lines are grouped into rows, ordered top-to-bottom and right-to-left, and parsed with Egyptian-ID-specific rules.
-7. Front and back results are merged, reconciled, returned with per-side diagnostics, and mapped into editable React form fields.
+4. The normalized image is base64-encoded and queued for a long-running `paddle_ocr_worker.py` process. This avoids temporary image files in the hot path.
+5. The OCR worker keeps PaddleOCR warm, receives jobs over stdin, and returns recognized text, confidence, and bounding boxes as UTF-8 JSON.
+6. The worker automatically selects CUDA when the installed Paddle build supports it and `PADDLE_OCR_DEVICE` allows it; otherwise it uses CPU. CPU workers honor `PADDLE_OCR_CPU_THREADS`.
+7. The API maintains an in-process worker pool and dispatches queued OCR jobs to idle workers. The default pool is 4 workers, configurable with `PADDLE_OCR_WORKERS`.
+8. Positioned lines are grouped into rows, ordered top-to-bottom and right-to-left, and parsed with Egyptian-ID-specific rules.
+9. Front and back results are merged, reconciled, returned with per-side diagnostics, and mapped into editable React form fields.
+
+### OCR worker pool and queue
+
+`PaddleOcrService` runs OCR through a persistent Python worker pool instead of starting a new PaddleOCR process for every request. Each pending OCR job stores its encoded image, enqueue time, timeout, and assigned worker. When a worker becomes idle, the service removes the next job from the queue and writes it to that worker's stdin.
+
+This gives the prototype a production-like isolation boundary:
+
+- API request handling stays in Node/NestJS.
+- PaddleOCR inference runs in separate Python worker processes.
+- OCR model startup cost is paid during worker initialization rather than every request.
+- Queue depth and queue wait time are logged through `paddleocr.job_queued` and `paddleocr.job_started`.
+- Timed-out jobs cause the service to restart the affected worker.
+
+For production, replace the current in-process queue with a durable queue such as Redis, SQS, RabbitMQ, or a managed queue service. The current queue is useful for local development and benchmarking, but a multi-server deployment needs a shared queue so API instances and OCR worker servers can scale independently.
 
 ### Image and number recovery
 
@@ -108,6 +126,8 @@ If the back-side religion or expiry date is missing, two focused back-card crops
 - **Tesseract.js remains an implemented alternative/fallback pipeline** in `ocr.ts` and `TesseractOcrService`, with normalized, thresholded, and original image variants. It is not the provider currently registered in the NestJS module, and a Paddle process failure is surfaced as an OCR error rather than automatically switching providers.
 - The optional `guideImage` API field is currently marked `reference-only`; it does not contribute extracted fields in the active Paddle flow.
 
+PaddleOCR can run offline after the required PaddleOCR models and Python dependencies are installed or packaged with the deployment image. The first setup may need network access to install packages or download models, but production can cache those models under `PADDLE_OCR_HOME`.
+
 Run the repository's sample OCR assertion and diagnostic output with:
 
 ```bash
@@ -115,6 +135,41 @@ npm run ocr:test:paddle
 ```
 
 The command reads private fixture paths from `OCR_TEST_FRONT`, `OCR_TEST_BACK`, `OCR_TEST_GUIDE`, and/or `OCR_TEST_SAMPLE`. Keep those files outside the repository. Its diagnostic output reports only status, confidence, methods, field names, and line counts; it does not print extracted identity values.
+
+### OCR benchmarks
+
+Two benchmark scripts are available:
+
+```bash
+npm run ocr:benchmark:endpoint
+```
+
+This calls the HTTP OCR endpoint repeatedly and measures end-to-end latency plus host-level CPU metrics from `/api/metrics/cpu`.
+
+```bash
+npm run ocr:benchmark:isolated
+```
+
+This bypasses HTTP and benchmarks a single isolated `paddle_ocr_worker.py` process tree. It rotates the six `test-ids/test-*-front|back.*` fixtures 100 times, sends unique benchmark IDs, samples only the OCR worker process tree, and writes a report under `output/ocr-isolated-benchmark/`.
+
+Latest isolated benchmark result:
+
+| Metric | Result |
+| --- | ---: |
+| Requests | 100 |
+| Successful requests | 100 |
+| Configured OCR CPU threads | 2 |
+| Average latency | 5.68 sec |
+| P90 latency | 11.42 sec |
+| Throughput | 0.176 req/sec |
+| Average OCR process CPU | 198.42% |
+| Average observed OCR vCPU usage | 1.98 vCPU |
+| Peak observed OCR vCPU usage | 2.98 vCPU |
+| CPU time per successful OCR request | 11.27 CPU-sec |
+| Average memory | 1.25 GB |
+| Peak memory | 2.27 GB |
+
+The isolated result is the cleaner capacity-planning input because it measures PaddleOCR itself, not the full API host. A conservative CPU-only worker allocation is 4 vCPU and 4-8 GB RAM per OCR worker. For 1,000 concurrent application users with 50-100 OCR submissions inside a 10-second window, the benchmark maps to roughly 60-120 CPU OCR workers, or about 8-15 worker servers at 32 vCPU each. GPU-backed PaddleOCR or managed OCR should be preferred for a hard 10-second SLA.
 
 ## How face checks were implemented
 
@@ -203,6 +258,10 @@ PGSSL=false
 PADDLE_OCR_PYTHON=python
 PADDLE_OCR_DEVICE=auto
 PADDLE_OCR_TIMEOUT_MS=120000
+PADDLE_OCR_WORKERS=4
+PADDLE_OCR_CPU_THREADS=2
+PADDLE_OCR_PREWARM=1
+# PADDLE_OCR_MAX_DIMENSION=960
 # PADDLE_OCR_HOME=.paddle-cache
 
 # AWS Rekognition
@@ -269,6 +328,8 @@ npm run dev
 | `npm run server` | Build and run the API once. |
 | `npm run db:migrate` | Apply `server/database/schema.sql` to PostgreSQL. |
 | `npm run ocr:test:paddle` | Run privacy-safe PaddleOCR diagnostics against fixture paths supplied through environment variables. |
+| `npm run ocr:benchmark:endpoint` | Run 100 OCR endpoint requests against the API and report end-to-end latency plus host CPU metrics. |
+| `npm run ocr:benchmark:isolated` | Run 100 OCR jobs directly against one isolated PaddleOCR worker process and report worker-only CPU/RAM metrics. |
 | `npm run build` | Build the server and production frontend. |
 | `npm run preview` | Preview the built Vite frontend. |
 | `npm run port:4000` | Show the process listening on port 4000. |
@@ -376,10 +437,14 @@ server/
   database/schema.sql                 PostgreSQL schema
   identity-verification/
     face-verification.service.ts      AWS face quality/match/liveness logic
-    ocr/paddle-ocr.service.ts         Active OCR provider and field parsing
-    ocr/paddle_ocr_runner.py          Python PaddleOCR adapter
+    ocr/paddle-ocr.service.ts         Active OCR provider, job queue, worker pool, and field parsing
+    ocr/paddle_ocr_worker.py          Persistent Python PaddleOCR worker used by the queue
+    ocr/paddle_ocr_runner.py          Single-image Python PaddleOCR adapter
     ocr/ocr.ts                        ID parsing, segmentation, and Tesseract pipeline
   uploads/applications/               Runtime document storage (generated)
+tools/
+  benchmark-ocr-endpoint.mjs          End-to-end OCR endpoint latency and host CPU benchmark
+  benchmark-isolated-paddle-ocr.py    Worker-only PaddleOCR latency, CPU, and memory benchmark
 ```
 
 ## Data and upload behavior
@@ -387,6 +452,7 @@ server/
 - ID and HR files are versioned by marking the previous matching upload as non-current and deleting its old local file after the replacement is recorded.
 - Stored-document uploads allow ID/selfie images and HR-letter images or PDFs, with a 10 MB per-file limit.
 - OCR and face-verification uploads are processed in memory with a 6 MB per-file limit.
+- The OCR worker queue is in-process inside each API runtime. A production deployment should move OCR jobs to a durable shared queue and run OCR workers on separate autoscaled worker servers.
 - The database schema includes application/profile, eligibility, OTP, contact verification, identity-document, document-requirement, upload, appointment, consent, status-event, general audit, and CRM audit tables. Not every scaffolded table is populated by the current prototype flow.
 
 ## Prototype limitations

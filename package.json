@@ -12,6 +12,8 @@
     "port:4000": "tsx server/common/port-tools.ts list 4000",
     "port:kill:4000": "tsx server/common/port-tools.ts kill 4000",
     "ocr:test:paddle": "tsx server/identity-verification/ocr/test-paddle-ocr.ts",
+    "ocr:benchmark:endpoint": "node tools/benchmark-ocr-endpoint.mjs",
+    "ocr:benchmark:isolated": "python tools/benchmark-isolated-paddle-ocr.py",
     "build": "npm run build:server && vite build frontend",
     "preview": "vite preview frontend"
   },

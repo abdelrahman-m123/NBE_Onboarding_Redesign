@@ -11,7 +11,9 @@ import {
   RefreshCw,
   Eye,
   X,
+  Activity,
 } from 'lucide-react'
+import { CpuMonitor } from './CpuMonitor'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'
 
@@ -169,6 +171,7 @@ export function CrmDashboard({ onBackToForm = () => {}, onLogout = () => {}, cur
   const [selectedDetails, setSelectedDetails] = useState(null)
   const [loading, setLoading] = useState(false)
   const [modalLoading, setModalLoading] = useState(false)
+  const [showCpuMonitor, setShowCpuMonitor] = useState(false)
   const officerName = currentOfficer?.name || 'Staff Officer'
   const selectedFields = selectedDetails?.application?.onboarding_fields || {}
   const selectedDocuments = selectedDetails?.documents || []
@@ -245,6 +248,9 @@ export function CrmDashboard({ onBackToForm = () => {}, onLogout = () => {}, cur
           </p>
         </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button className="button button-secondary" onClick={() => setShowCpuMonitor(!showCpuMonitor)} title="Toggle CPU Monitor">
+            <Activity size={16} /> Metrics
+          </button>
           <button className="button button-secondary" onClick={fetchApplications} title="Refresh records">
             <RefreshCw size={16} /> Refresh
           </button>
@@ -624,6 +630,8 @@ export function CrmDashboard({ onBackToForm = () => {}, onLogout = () => {}, cur
           </div>
         </div>
       )}
+
+      {showCpuMonitor && <CpuMonitor onClose={() => setShowCpuMonitor(false)} />}
     </div>
   )
 }

@@ -14,6 +14,7 @@ import { FaceVerificationService } from './face-verification.service.js'
   providers: [
     IdentityVerificationService,
     FaceVerificationService,
+    PaddleOcrService,
     {
       provide: MAILER_SERVICE,
       useClass: NodemailerMailerService,
@@ -27,6 +28,6 @@ import { FaceVerificationService } from './face-verification.service.js'
       useClass: TelegramSmsService,
     },
   ],
-  exports: [MAILER_SERVICE, SMS_SERVICE],
+  exports: [MAILER_SERVICE, SMS_SERVICE, PaddleOcrService],
 })
 export class IdentityVerificationModule {}

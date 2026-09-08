@@ -1,17 +1,35 @@
-import { useRef, useState } from 'react'
-import { CheckCircle2, FileText, Info, Upload, UserRound, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { CheckCircle2, Clock3, FileText, Info, Upload, UserRound, X } from 'lucide-react'
 import { API_BASE_URL } from '../../config/api'
 import { additionalIdentityFields, governorateOptions } from '../../config/onboarding'
 import { templateText } from '../../utils/form'
 import { CheckboxField, Field, FieldGrid, FormSection, SelectField } from '../forms/FormControls'
 
 export function IdentityStep({ form, errors, update, ocrFiles, setOcrFiles, ocrResult, onOcrResult, t }) {
+  const language = document.documentElement.lang || 'en'
   const frontInputRef = useRef(null)
   const backInputRef = useRef(null)
   const [ocrStatus, setOcrStatus] = useState('idle')
   const [ocrError, setOcrError] = useState('')
+  const [ocrLatencyMs, setOcrLatencyMs] = useState(null)
+  const [ocrElapsedMs, setOcrElapsedMs] = useState(0)
+  const [showReport, setShowReport] = useState(false)
+  const [benchmarkMode, setBenchmarkMode] = useState(false)
+  const ocrStartedAtRef = useRef(null)
   const isOcrScanning = ocrStatus === 'scanning'
   const canScanNationalId = Boolean(ocrFiles.front && ocrFiles.back) && !isOcrScanning
+  const displayedLatencyMs = isOcrScanning ? ocrElapsedMs : ocrLatencyMs
+
+  useEffect(() => {
+    if (!isOcrScanning) return undefined
+
+    const interval = window.setInterval(() => {
+      if (!ocrStartedAtRef.current) return
+      setOcrElapsedMs(Math.round(performance.now() - ocrStartedAtRef.current))
+    }, 250)
+
+    return () => window.clearInterval(interval)
+  }, [isOcrScanning])
 
   const selectOcrFile = (side, event) => {
     const file = event.target.files?.[0]
@@ -21,6 +39,8 @@ export function IdentityStep({ form, errors, update, ocrFiles, setOcrFiles, ocrR
     if (side === 'front') update('faceVerification', null)
     setOcrError('')
     setOcrStatus('idle')
+    setOcrLatencyMs(null)
+    setOcrElapsedMs(0)
     event.target.value = ''
   }
 
@@ -28,6 +48,8 @@ export function IdentityStep({ form, errors, update, ocrFiles, setOcrFiles, ocrR
     setOcrFiles((current) => ({ ...current, [side]: null }))
     if (side === 'front') update('faceVerification', null)
     setOcrStatus('idle')
+    setOcrLatencyMs(null)
+    setOcrElapsedMs(0)
   }
 
   const scanNationalId = async () => {
@@ -39,30 +61,70 @@ export function IdentityStep({ form, errors, update, ocrFiles, setOcrFiles, ocrR
 
     setOcrStatus('scanning')
     setOcrError('')
+    setOcrLatencyMs(null)
+    setOcrElapsedMs(0)
+    ocrStartedAtRef.current = performance.now()
 
     const formData = new FormData()
     formData.append('frontImage', ocrFiles.front)
     formData.append('backImage', ocrFiles.back)
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/identity/ocr/full`, {
+      // Add device parameter for benchmark mode
+      const url = benchmarkMode 
+        ? `${API_BASE_URL}/api/identity/ocr/full?device=both`
+        : `${API_BASE_URL}/api/identity/ocr/full`
+      
+      const response = await fetch(url, {
         method: 'POST',
         body: formData,
       })
       const payload = await response.json()
+      const finishedLatencyMs = Math.round(performance.now() - ocrStartedAtRef.current)
+      setOcrLatencyMs(finishedLatencyMs)
+      setOcrElapsedMs(finishedLatencyMs)
 
       if (!response.ok) {
         throw new Error(payload.message || t.identity.scanFallbackError)
       }
 
-      onOcrResult(payload)
-      setOcrStatus(payload.extracted?.nationalId ? 'complete' : 'needs-review')
-      if (!payload.extracted?.nationalId) {
-        setOcrError(t.identity.scanError)
+      // Handle dual mode results
+      if (benchmarkMode && payload.mode === 'dual') {
+        // Use GPU result if available, otherwise CPU result
+        const primaryResult = payload.gpuResult || payload.cpuResult
+        if (primaryResult) {
+          onOcrResult({
+            ...primaryResult,
+            mode: payload.mode,
+            cpuResult: payload.cpuResult,
+            gpuResult: payload.gpuResult,
+            durationMs: payload.durationMs,
+          })
+          setOcrStatus(primaryResult.extracted?.nationalId ? 'complete' : 'needs-review')
+          if (!primaryResult.extracted?.nationalId) {
+            setOcrError(t.identity.scanError)
+          }
+        } else {
+          setOcrStatus('failed')
+          setOcrError('Both CPU and GPU processing failed')
+        }
+      } else {
+        onOcrResult(payload)
+        setOcrStatus(payload.extracted?.nationalId ? 'complete' : 'needs-review')
+        if (!payload.extracted?.nationalId) {
+          setOcrError(t.identity.scanError)
+        }
       }
     } catch (error) {
+      if (ocrStartedAtRef.current) {
+        const failedLatencyMs = Math.round(performance.now() - ocrStartedAtRef.current)
+        setOcrLatencyMs(failedLatencyMs)
+        setOcrElapsedMs(failedLatencyMs)
+      }
       setOcrStatus('failed')
       setOcrError(error.message || t.identity.ocrUnavailable)
+    } finally {
+      ocrStartedAtRef.current = null
     }
   }
 
@@ -100,6 +162,20 @@ export function IdentityStep({ form, errors, update, ocrFiles, setOcrFiles, ocrR
           >
             <Upload size={18} /> {ocrStatus === 'scanning' ? t.identity.scanning : t.identity.scanButton}
           </button>
+          <button
+            type="button"
+            className={`button ${benchmarkMode ? 'button-primary' : 'button-secondary'}`}
+            onClick={() => setBenchmarkMode(!benchmarkMode)}
+            title="Run OCR on both CPU and GPU for performance comparison"
+          >
+            {benchmarkMode ? 'Benchmark: ON' : 'Benchmark: OFF'}
+          </button>
+          {displayedLatencyMs !== null && (
+            <div className={`ocr-latency-pill ${isOcrScanning ? 'is-live' : ''}`} aria-live="polite">
+              <Clock3 size={15} />
+              <span>{t.identity.ocrLatencyLabel}: {formatLatency(displayedLatencyMs)}</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -110,6 +186,11 @@ export function IdentityStep({ form, errors, update, ocrFiles, setOcrFiles, ocrR
             <div>
               <strong>{ocrError ? t.identity.reviewTitle : t.identity.appliedTitle}</strong>
               <p>{ocrError || t.identity.reviewDescription}</p>
+              {displayedLatencyMs !== null && (
+                <p className="ocr-latency-line">
+                  {t.identity.ocrLatencyLabel}: {formatLatency(displayedLatencyMs)}
+                </p>
+              )}
             </div>
           </div>
           {ocrResult?.extracted && (
@@ -129,6 +210,114 @@ export function IdentityStep({ form, errors, update, ocrFiles, setOcrFiles, ocrR
               <div><dt>{t.identity.ocrFields.religion}</dt><dd>{ocrResult.extracted.religion || t.identity.ocrFields.empty}</dd></div>
               <div><dt>{t.identity.ocrFields.maritalStatus}</dt><dd>{ocrResult.extracted.maritalStatusAr || ocrResult.extracted.maritalStatus || t.identity.ocrFields.empty}</dd></div>
             </dl>
+          )}
+
+          {ocrResult && (
+            <div style={{ marginTop: '16px' }}>
+              <button 
+                type="button" 
+                className="text-button compact" 
+                onClick={() => setShowReport(!showReport)}
+              >
+                {showReport ? (language === 'ar' ? 'إخفاء تقرير الفحص' : 'Hide OCR Diagnostics Report') : (language === 'ar' ? 'عرض تقرير الفحص' : 'Show OCR Diagnostics Report')}
+              </button>
+              
+              {showReport && (
+                <div className="ocr-diagnostics-report">
+                  <h4>{language === 'ar' ? 'تقرير فحص البطاقة (Diagnostic Report)' : 'OCR Diagnostics Report'}</h4>
+                  
+                  {benchmarkMode && ocrResult.mode === 'dual' ? (
+                    <div className="benchmark-comparison">
+                      {ocrResult.cpuResult && ocrResult.gpuResult && (
+                        <div className="benchmark-summary">
+                          <BenchmarkComparisonSummary 
+                            cpuResult={ocrResult.cpuResult} 
+                            gpuResult={ocrResult.gpuResult} 
+                          />
+                        </div>
+                      )}
+                      <div className="benchmark-column">
+                        <h5>CPU Results</h5>
+                        {ocrResult.cpuResult ? (
+                          <BenchmarkResult result={ocrResult.cpuResult} />
+                        ) : (
+                          <p className="error-text">CPU processing failed</p>
+                        )}
+                      </div>
+                      <div className="benchmark-column">
+                        <h5>GPU Results</h5>
+                        {ocrResult.gpuResult ? (
+                          <BenchmarkResult result={ocrResult.gpuResult} />
+                        ) : (
+                          <p className="error-text">GPU processing failed</p>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="ocr-report-grid">
+                        <div>
+                          <strong>Status:</strong> {ocrResult.status}
+                        </div>
+                        {ocrResult.cpu && (
+                          <>
+                            <div>
+                              <strong>CPU Usage:</strong> {ocrResult.cpu.usagePercent}%
+                            </div>
+                            <div>
+                              <strong>Logical Cores (vCPUs):</strong> {ocrResult.cpu.vcpus}
+                            </div>
+                            <div>
+                              <strong>Physical Cores (est.):</strong> {ocrResult.cpu.physicalCpus}
+                            </div>
+                          </>
+                        )}
+                        {ocrResult.gpu && (
+                          <>
+                            <div>
+                              <strong>GPU Utilization:</strong> {ocrResult.gpu.utilizationPercent}%
+                            </div>
+                            <div>
+                              <strong>GPU Memory:</strong> {ocrResult.gpu.memoryUsedMb}MB / {ocrResult.gpu.memoryTotalMb}MB
+                            </div>
+                          </>
+                        )}
+                        <div>
+                          <strong>Method:</strong> {ocrResult.method}
+                        </div>
+                      </div>
+                      
+                      {ocrResult.sides?.front && (
+                        <div className="ocr-side-report">
+                          <h5>Front Image (Confidence: {ocrResult.sides.front.confidence}%)</h5>
+                          <ul className="ocr-raw-lines">
+                            {ocrResult.sides.front.lines?.map((line, i) => (
+                              <li key={i}>
+                                <span className="ocr-line-text">{line.text}</span>
+                                {line.confidence != null && <span className="ocr-line-conf">{Math.round(line.confidence * 100)}%</span>}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {ocrResult.sides?.back && (
+                        <div className="ocr-side-report">
+                          <h5>Back Image (Confidence: {ocrResult.sides.back.confidence}%)</h5>
+                          <ul className="ocr-raw-lines">
+                            {ocrResult.sides.back.lines?.map((line, i) => (
+                              <li key={i}>
+                                <span className="ocr-line-text">{line.text}</span>
+                                {line.confidence != null && <span className="ocr-line-conf">{Math.round(line.confidence * 100)}%</span>}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -216,6 +405,11 @@ export function IdentityStep({ form, errors, update, ocrFiles, setOcrFiles, ocrR
   )
 }
 
+function formatLatency(milliseconds) {
+  if (!Number.isFinite(milliseconds)) return '0.0s'
+  return `${(milliseconds / 1000).toFixed(1)}s`
+}
+
 function OcrImagePicker({ label, file, inputRef, onSelect, onRemove, t }) {
   return (
     <div className={`ocr-file-picker ${file ? 'has-file' : ''}`}>
@@ -236,6 +430,125 @@ function OcrImagePicker({ label, file, inputRef, onSelect, onRemove, t }) {
           <X size={16} />
         </button>
       )}
+    </div>
+  )
+}
+
+function BenchmarkResult({ result }) {
+  const deviceName = result.device === 'cpu' ? 'CPU' : result.device === 'gpu' ? 'GPU' : 'Unknown'
+  const latency = result.durationMs ? (result.durationMs / 1000).toFixed(2) + 's' : 'N/A'
+  
+  return (
+    <div className="benchmark-result">
+      <div className="benchmark-latency-highlight">
+        <strong>{deviceName} Latency:</strong> {latency}
+      </div>
+      <div className="ocr-report-grid">
+        <div>
+          <strong>Status:</strong> {result.status}
+        </div>
+        <div>
+          <strong>Confidence:</strong> {result.confidence}%
+        </div>
+        {result.cpu && (
+          <>
+            <div>
+              <strong>CPU Usage:</strong> {result.cpu.usagePercent}%
+            </div>
+            <div>
+              <strong>vCPUs:</strong> {result.cpu.vcpus}
+            </div>
+          </>
+        )}
+        {result.gpu && (
+          <>
+            <div>
+              <strong>GPU Utilization:</strong> {result.gpu.utilizationPercent}%
+            </div>
+            <div>
+              <strong>GPU Memory:</strong> {result.gpu.memoryUsedMb}MB / {result.gpu.memoryTotalMb}MB
+            </div>
+            {result.gpu.utilizationDelta !== undefined && (
+              <div>
+                <strong>GPU Δ:</strong> {result.gpu.utilizationDelta > 0 ? '+' : ''}{result.gpu.utilizationDelta}%
+              </div>
+            )}
+            {result.gpu.memoryDelta !== undefined && (
+              <div>
+                <strong>Memory Δ:</strong> {result.gpu.memoryDelta > 0 ? '+' : ''}{result.gpu.memoryDelta}MB
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      
+      {result.sides?.front && (
+        <div className="ocr-side-report">
+          <h6>Front (Confidence: {result.sides.front.confidence}%)</h6>
+          <ul className="ocr-raw-lines">
+            {result.sides.front.lines?.slice(0, 5).map((line, i) => (
+              <li key={i}>
+                <span className="ocr-line-text">{line.text}</span>
+                {line.confidence != null && <span className="ocr-line-conf">{Math.round(line.confidence * 100)}%</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {result.sides?.back && (
+        <div className="ocr-side-report">
+          <h6>Back (Confidence: {result.sides.back.confidence}%)</h6>
+          <ul className="ocr-raw-lines">
+            {result.sides.back.lines?.slice(0, 5).map((line, i) => (
+              <li key={i}>
+                <span className="ocr-line-text">{line.text}</span>
+                {line.confidence != null && <span className="ocr-line-conf">{Math.round(line.confidence * 100)}%</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BenchmarkComparisonSummary({ cpuResult, gpuResult }) {
+  const cpuLatency = cpuResult.durationMs ? cpuResult.durationMs / 1000 : null
+  const gpuLatency = gpuResult.durationMs ? gpuResult.durationMs / 1000 : null
+  
+  if (!cpuLatency || !gpuLatency) return null
+  
+  const speedup = cpuLatency / gpuLatency
+  const speedupPercent = ((1 - (gpuLatency / cpuLatency)) * 100).toFixed(1)
+  const isFaster = gpuLatency < cpuLatency
+  
+  return (
+    <div className="benchmark-summary">
+      <h4>Performance Comparison</h4>
+      <div className="comparison-grid">
+        <div className="comparison-item">
+          <span className="comparison-label">Run order</span>
+          <span className="comparison-value">CPU then GPU</span>
+        </div>
+        <div className="comparison-item">
+          <span className="comparison-label">CPU Latency</span>
+          <span className="comparison-value">{cpuLatency.toFixed(2)}s</span>
+        </div>
+        <div className="comparison-item">
+          <span className="comparison-label">GPU Latency</span>
+          <span className="comparison-value">{gpuLatency.toFixed(2)}s</span>
+        </div>
+        <div className={`comparison-item ${isFaster ? 'faster' : 'slower'}`}>
+          <span className="comparison-label">Speedup</span>
+          <span className="comparison-value">
+            {speedup.toFixed(2)}x ({isFaster ? '+' : ''}{speedupPercent}%)
+          </span>
+        </div>
+        <div className="comparison-item">
+          <span className="comparison-label">Total benchmark time</span>
+          <span className="comparison-value">{(cpuLatency + gpuLatency).toFixed(2)}s</span>
+        </div>
+      </div>
     </div>
   )
 }

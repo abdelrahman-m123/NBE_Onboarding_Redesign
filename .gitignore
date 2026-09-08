@@ -1,9 +1,16 @@
 node_modules/
 dist/
 .vite/
+.codex/
+.presentation-finalizer/
+output/
 *.local
 *.log
 *.traineddata
+.env
+server/.env
+__pycache__/
+*.py[cod]
 .matplotlib/
 .paddle-cache/
 .paddlex-cache/

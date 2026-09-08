@@ -5,7 +5,6 @@ import { PaddleOcrService } from './paddle-ocr.service.js'
 const testImages = {
   front: process.env.OCR_TEST_FRONT,
   back: process.env.OCR_TEST_BACK,
-  guide: process.env.OCR_TEST_GUIDE,
   sample: process.env.OCR_TEST_SAMPLE,
 }
 
@@ -48,36 +47,38 @@ function summarizeResult(result: any) {
     sides: {
       front: result.sides?.front ? summarizeSide(result.sides.front) : null,
       back: result.sides?.back ? summarizeSide(result.sides.back) : null,
-      guide: result.sides?.guide ? summarizeSide(result.sides.guide) : null,
     },
   }
 }
 
 async function main() {
   const service = new PaddleOcrService()
-  const front = await readOptional(testImages.front)
-  const back = await readOptional(testImages.back)
-  const guide = await readOptional(testImages.guide)
-  const sample = await readOptional(testImages.sample)
+  try {
+    const front = await readOptional(testImages.front)
+    const back = await readOptional(testImages.back)
+    const sample = await readOptional(testImages.sample)
 
-  if (!front && !back && !guide && !sample) {
-    throw new Error(
-      'Configure private OCR fixtures with OCR_TEST_FRONT, OCR_TEST_BACK, OCR_TEST_GUIDE, or OCR_TEST_SAMPLE.',
-    )
-  }
+    if (!front && !back && !sample) {
+      throw new Error(
+        'Configure private OCR fixtures with OCR_TEST_FRONT, OCR_TEST_BACK, or OCR_TEST_SAMPLE.',
+      )
+    }
 
-  if (front || back || guide) {
-    const result = await service.recognizeNationalIdImages({ front, back, guide })
-    assertSafeOcrResult(result)
-    console.log('\n### front/back/guide')
-    console.log(JSON.stringify(summarizeResult(result), null, 2))
-  }
+    if (front || back) {
+      const result = await service.recognizeNationalIdImages({ front, back })
+      assertSafeOcrResult(result)
+      console.log('\n### front/back')
+      console.log(JSON.stringify(summarizeResult(result), null, 2))
+    }
 
-  if (sample) {
-    const result = await service.recognizeNationalId(sample)
-    assertSafeOcrResult(result)
-    console.log('\n### sample')
-    console.log(JSON.stringify(summarizeSide(result), null, 2))
+    if (sample) {
+      const result = await service.recognizeNationalId(sample)
+      assertSafeOcrResult(result)
+      console.log('\n### sample')
+      console.log(JSON.stringify(summarizeSide(result), null, 2))
+    }
+  } finally {
+    service.onModuleDestroy()
   }
 }
 

@@ -1,10 +1,11 @@
-import { Body, Controller, HttpException, HttpStatus, Post, Req, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common'
+import { Controller, HttpException, HttpStatus, Post, Query, Req, UploadedFile, UploadedFiles, UseInterceptors, Get, Body } from '@nestjs/common'
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express'
 import multer from 'multer'
 import { logger } from '../common/logger.js'
 import type { RequestWithId } from '../common/types/request-with-id.js'
 import { FaceVerificationService } from './face-verification.service.js'
 import { IdentityVerificationService } from './identity-verification.service.js'
+import { PaddleOcrService } from './ocr/paddle-ocr.service.js'
 
 const uploadOptions = {
   storage: multer.memoryStorage(),
@@ -28,6 +29,7 @@ export class IdentityVerificationController {
   constructor(
     private readonly identityVerificationService: IdentityVerificationService,
     private readonly faceVerificationService: FaceVerificationService,
+    private readonly paddleOcrService: PaddleOcrService,
   ) {}
 
   @Post('ocr')
@@ -45,16 +47,15 @@ export class IdentityVerificationController {
   @UseInterceptors(FileFieldsInterceptor([
     { name: 'frontImage', maxCount: 1 },
     { name: 'backImage', maxCount: 1 },
-    { name: 'guideImage', maxCount: 1 },
   ], uploadOptions))
   async readFullNationalId(
     @UploadedFiles() uploadedFiles: Record<string, Express.Multer.File[]>,
     @Req() request: RequestWithId,
+    @Query('device') device?: 'cpu' | 'gpu' | 'both' | 'auto',
   ) {
     const files = {
       front: uploadedFiles.frontImage?.[0],
       back: uploadedFiles.backImage?.[0],
-      guide: uploadedFiles.guideImage?.[0],
     }
 
     if (!files.front && !files.back) {
@@ -62,7 +63,8 @@ export class IdentityVerificationController {
       throw new HttpException({ message: 'Upload at least the front or back image of the National ID.' }, HttpStatus.BAD_REQUEST)
     }
 
-    return this.identityVerificationService.readNationalIdImages(files, request.requestId)
+    const targetDevice = device || 'auto'
+    return this.identityVerificationService.readNationalIdImages(files, request.requestId, targetDevice)
   }
 
   @Post('face/liveness-session')
@@ -85,5 +87,20 @@ export class IdentityVerificationController {
       selfieImages: uploadedFiles.selfieImages || [],
       livenessSessionId: body.livenessSessionId,
     }, request.requestId)
+  }
+
+  @Post('ocr/dual-pool')
+  async toggleDualPool(@Body() body: { enabled: boolean }) {
+    if (body.enabled) {
+      this.paddleOcrService.enableDualPool()
+    } else {
+      this.paddleOcrService.disableDualPool()
+    }
+    return { enabled: body.enabled }
+  }
+
+  @Get('ocr/dual-pool')
+  getDualPoolStatus() {
+    return { enabled: this.paddleOcrService['dualPoolEnabled'] }
   }
 }
